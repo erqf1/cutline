@@ -1113,7 +1113,7 @@ void MainWindow::exportVideo() {
 
 // Entwickler-Test: Fenster per grab() in Dateien rendern (greift nicht auf den Bildschirm zu)
 void MainWindow::selfShots(const QString& dir) {
-    auto shot = [this, dir](const char* name) { grab().save(dir + "/" + name + ".png"); };
+    auto shot = [this, dir](const QString& name) { grab().save(dir + "/" + name + ".png"); };
     QTimer::singleShot(3500, this, [=] {
         shot("a_default");
         btnEdit_->setChecked(true);
@@ -1151,6 +1151,19 @@ void MainWindow::selfShots(const QString& dir) {
         ExportDialog e(this, pr_.vw, pr_.vh, 30.0);
         QTimer::singleShot(300, &e, [&e, dir] { e.grab().save(dir + "/g_export.png"); e.accept(); });
         e.exec();
-        QApplication::quit();
+    });
+    // Alle Themes einzeln (für die Website)
+    QTimer::singleShot(13000, this, [=] {
+        setLanguage("en");
+        retranslate();
+        const auto list = themes();
+        for (int i = 0; i < list.size(); ++i) {
+            QTimer::singleShot(i * 900, this, [=] {
+                setCurrentTheme(list[i].id);
+                applyTheme();
+                QTimer::singleShot(400, this, [=] { shot("theme_" + list[i].id); });
+            });
+        }
+        QTimer::singleShot(list.size() * 900 + 800, this, [] { QApplication::quit(); });
     });
 }
