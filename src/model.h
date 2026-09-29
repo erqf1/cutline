@@ -3,6 +3,8 @@
 #include <QString>
 #include <QStringList>
 #include <algorithm>
+#include <cmath>
+#include <cstdlib>
 
 struct Source {
     QString path;

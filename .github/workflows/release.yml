@@ -122,7 +122,11 @@ jobs:
           sed -i "s/^pkgver=.*/pkgver=${VER}/" /home/builder/pkg/PKGBUILD
           chown -R builder /home/builder/pkg
           cd /home/builder/pkg
-          su builder -c "makepkg -f --noconfirm"
+          if ! su builder -c "makepkg -f --noconfirm" > /tmp/makepkg.log 2>&1; then
+            tail -n 60 /tmp/makepkg.log | sed 's/%/%25/g' | awk '{printf "%s%%0A", $0}' > /tmp/tail.txt
+            echo "::error title=makepkg failed::$(cat /tmp/tail.txt)"
+            exit 1
+          fi
           cp cutline-*-x86_64.pkg.tar.zst "$GITHUB_WORKSPACE/cutline-x86_64.pkg.tar.zst"
       - uses: actions/upload-artifact@v4
         with:
@@ -168,7 +172,7 @@ jobs:
           path: Cutline-macos-${{ matrix.name }}.dmg
 
   release:
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: ${{ always() && startsWith(github.ref, 'refs/tags/v') && needs.windows.result == 'success' && needs.linux.result == 'success' && needs.macos.result == 'success' }}
     needs: [windows, linux, arch, macos]
     runs-on: ubuntu-latest
     steps:
