@@ -2,6 +2,7 @@
 
 A simple, fast video editor. Open an mp4 or mov, cut it, change the speed of parts, blur faces or text, drop in images, videos and music, and export. Nothing else.
 
+- **Also a good video player.** Make it your default app for mp4/mov/mkv: instant start, fullscreen, click to pause, 5-second skip, ambient light around the video.
 - **Opens instantly.** No import step, no project setup. Drag a video in and it plays.
 - **Edit mode with a timeline.** Trim, split, remove segments, per-segment speed, image overlays, blur areas (the blur is real, also in the preview), extra videos and a sound track lane.
 - **Sensible export.** Pick resolution (4K … SD), frame rate and quality. Only values up to the original are offered, so you never waste disk space.
@@ -15,7 +16,8 @@ Get the latest build from the [Releases page](../../releases/latest):
 
 | Platform | File |
 | --- | --- |
-| Windows (x64) | `Cutline-windows-x64.zip` – unzip and run `Cutline.exe` |
+| Windows (x64) installer | `Cutline-windows-x64-setup.exe` – installs per user and adds Cutline to the **Open with** menu of videos |
+| Windows (x64) portable | `Cutline-windows-x64.zip` – unzip and run `Cutline.exe` |
 | Linux (Debian / Ubuntu) | `cutline_amd64.deb` – `sudo apt install ./cutline_amd64.deb` |
 | Linux (Arch) | `cutline-x86_64.pkg.tar.zst` – `sudo pacman -U cutline-x86_64.pkg.tar.zst` |
 | Linux (any, tar.gz) | `cutline-linux-x86_64.tar.gz` – needs Qt 6 and ffmpeg from your distro |

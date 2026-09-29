@@ -1,4 +1,5 @@
 #include <QApplication>
+#include <QFileOpenEvent>
 #include <QGuiApplication>
 #include <QSettings>
 #include <QTimer>
@@ -8,8 +9,26 @@
 #include "mainwindow.h"
 #include "theme.h"
 
+// macOS liefert "Oeffnen mit"/Doppelklick als QFileOpenEvent statt als Argument
+class App : public QApplication {
+public:
+    using QApplication::QApplication;
+    MainWindow* window = nullptr;
+    QString pending;
+
+protected:
+    bool event(QEvent* e) override {
+        if (e->type() == QEvent::FileOpen) {
+            const QString f = static_cast<QFileOpenEvent*>(e)->file();
+            if (window) window->openFile(f); else pending = f;
+            return true;
+        }
+        return QApplication::event(e);
+    }
+};
+
 int main(int argc, char* argv[]) {
-    QApplication app(argc, argv);
+    App app(argc, argv);
     QCoreApplication::setOrganizationName("WSoftware");
     QCoreApplication::setApplicationName("VideoEditor");
     QGuiApplication::setApplicationDisplayName("Cutline");
@@ -33,7 +52,12 @@ int main(int argc, char* argv[]) {
 
     MainWindow w;
     w.show();
-    if (argc > 1) QTimer::singleShot(0, &w, [&w, path = QString::fromLocal8Bit(argv[1])] { w.openFile(path); });
-    if (argc > 3 && QString(argv[2]) == "--shots") w.selfShots(QString::fromLocal8Bit(argv[3]));
+    app.window = &w;
+    if (!app.pending.isEmpty()) w.openFile(app.pending);
+    // Argumente als Unicode lesen (Dateien aus "Oeffnen mit" koennen Sonderzeichen enthalten)
+    const QStringList args = app.arguments();
+    if (args.size() > 1 && !args[1].startsWith("--"))
+        QTimer::singleShot(0, &w, [&w, path = args[1]] { w.openFile(path); });
+    if (args.size() > 3 && args[2] == "--shots") w.selfShots(args[3]);
     return app.exec();
 }
