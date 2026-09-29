@@ -26,6 +26,10 @@ Get the latest build from the [Releases page](../../releases/latest):
 
 macOS builds are not notarized. On first start, right-click the app and choose **Open**.
 
+## Publishing (maintainers)
+
+Run `publish.bat`: it asks for your GitHub username, opens the new-repository page, pushes the code and the `v1.0.0` tag (which triggers the release builds) and opens the Pages settings (`main` / `/docs`).
+
 ## Keyboard shortcuts
 
 | Key | Action |

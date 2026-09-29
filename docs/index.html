@@ -372,10 +372,11 @@
   var owner = host.endsWith('.github.io') ? host.split('.')[0] : null;
   var repo = parts[0] || 'cutline';
   var base = owner ? 'https://github.com/' + owner + '/' + repo : 'https://github.com/';
-  var latest = owner ? base + '/releases/latest/download/' : base;
+  var latest = owner ? base + '/releases/latest/download/' : '#local-preview:';
   ['gh-link', 'gh-link2'].forEach(function (id) { $('#' + id).href = base; });
-  $('#all-dl').href = $('#rel-link').href = owner ? base + '/releases' : base;
-  $('#lic-link').href = owner ? base + '/blob/main/LICENSE' : base;
+  $('#all-dl').href = $('#rel-link').href = owner ? base + '/releases' : '#local-preview:';
+  $('#lic-link').href = owner ? base + '/blob/main/LICENSE' : '#local-preview:';
+  ['gh-link', 'gh-link2'].forEach(function (id) { if (!owner) $('#' + id).href = '#local-preview:'; });
 
   // ---------- Downloads ----------
   var ICON = {
@@ -468,6 +469,11 @@
     if (chip) { otherTab = chip.dataset.tab; render(); closeAll(); var m = $('#other-menu'); m.classList.add('open'); $('#other-btn').setAttribute('aria-expanded', 'true'); }
   });
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeAll(); });
+  // Lokale Vorschau: Die Links kennen das GitHub-Repo erst, wenn die Seite auf GitHub Pages liegt (name.github.io/cutline)
+  document.addEventListener('click', function (e) {
+    var a = e.target.closest('a[href^="#local-preview:"]');
+    if (a) { e.preventDefault(); alert('Preview only: download links work once this page is published on GitHub Pages (yourname.github.io/cutline).'); }
+  });
 
   // Version + Dateigrößen aus der GitHub-API
   if (owner) {
