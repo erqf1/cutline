@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Cutline
+GenericName=Video Editor
+Comment=Simple, fast video editor
+Exec=cutline %f
+Icon=cutline
+Terminal=false
+Categories=AudioVideo;Video;AudioVideoEditing;
+MimeType=video/mp4;video/quicktime;video/x-matroska;video/webm;video/x-msvideo;

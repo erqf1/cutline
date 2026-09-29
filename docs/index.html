@@ -1,0 +1,349 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Cutline – simple video editor</title>
+<meta name="description" content="Cutline is a simple, fast video editor. Cut, speed up, blur, add images and music, export. Free for Windows, Linux and macOS.">
+<link rel="icon" href="favicon.ico">
+<style>
+  :root {
+    --bg:#0b0d12; --panel:#12151c; --panel2:#181c25; --line:#252a36;
+    --text:#e8eaf0; --muted:#8e94a6; --accent:#4ade9b; --accent-ink:#04231a; --blue:#4aa3ff;
+    --radius:16px;
+  }
+  @media (prefers-color-scheme: light) {
+    :root { --bg:#f5f6f9; --panel:#ffffff; --panel2:#eef0f5; --line:#dfe2ea; --text:#161923; --muted:#5f6577; --accent:#17a56b; --accent-ink:#ffffff; }
+  }
+  * { box-sizing:border-box; }
+  html { scroll-behavior:smooth; }
+  body { margin:0; background:var(--bg); color:var(--text); font:16px/1.6 system-ui,-apple-system,"Segoe UI",Roboto,Ubuntu,sans-serif; -webkit-font-smoothing:antialiased; }
+  a { color:inherit; }
+  .wrap { max-width:1120px; margin:0 auto; padding:0 24px; }
+
+  /* Nav */
+  nav { position:sticky; top:0; z-index:10; backdrop-filter:blur(14px); background:color-mix(in srgb,var(--bg) 82%,transparent); border-bottom:1px solid var(--line); }
+  nav .wrap { display:flex; align-items:center; gap:24px; height:64px; }
+  .brand { display:flex; align-items:center; gap:10px; font-weight:700; font-size:18px; text-decoration:none; }
+  .brand img { width:30px; height:30px; }
+  nav .links { margin-left:auto; display:flex; gap:22px; align-items:center; font-size:15px; color:var(--muted); }
+  nav .links a { text-decoration:none; }
+  nav .links a:hover { color:var(--text); }
+  .lang { background:var(--panel2); border:1px solid var(--line); color:var(--text); border-radius:10px; padding:6px 10px; font:inherit; font-size:14px; cursor:pointer; }
+
+  /* Buttons */
+  .btn { display:inline-flex; align-items:center; gap:10px; padding:13px 22px; border-radius:12px; border:1px solid var(--line); background:var(--panel2); color:var(--text); font-weight:600; text-decoration:none; transition:transform .15s, border-color .15s, background .15s; }
+  .btn:hover { transform:translateY(-1px); border-color:var(--accent); }
+  .btn.primary { background:var(--accent); color:var(--accent-ink); border-color:var(--accent); }
+  .btn.primary:hover { filter:brightness(1.08); }
+
+  /* Hero */
+  .hero { padding:88px 0 40px; text-align:center; position:relative; overflow:hidden; }
+  .hero::before { content:""; position:absolute; inset:-200px 0 auto 0; height:640px; background:radial-gradient(60% 60% at 50% 30%, color-mix(in srgb,var(--accent) 22%, transparent), transparent 70%); pointer-events:none; }
+  .pill { display:inline-block; padding:5px 14px; border:1px solid var(--line); border-radius:999px; color:var(--muted); font-size:14px; background:var(--panel); }
+  h1 { font-size:clamp(38px,7vw,72px); line-height:1.05; letter-spacing:-.03em; margin:22px 0 18px; }
+  h1 em { font-style:normal; background:linear-gradient(90deg,var(--accent),var(--blue)); -webkit-background-clip:text; background-clip:text; color:transparent; }
+  .lead { max-width:660px; margin:0 auto 32px; color:var(--muted); font-size:clamp(17px,2.2vw,20px); }
+  .cta { display:flex; gap:12px; justify-content:center; flex-wrap:wrap; }
+  .shot { margin:56px auto 0; max-width:1040px; border-radius:18px; border:1px solid var(--line); box-shadow:0 40px 100px -30px rgba(0,0,0,.6), 0 0 0 1px rgba(255,255,255,.03) inset; overflow:hidden; background:var(--panel); }
+  .shot img { display:block; width:100%; height:auto; }
+
+  /* Sections */
+  section { padding:88px 0; }
+  h2 { font-size:clamp(30px,4.5vw,46px); letter-spacing:-.02em; line-height:1.1; margin:0 0 14px; }
+  .sub { color:var(--muted); max-width:640px; font-size:18px; margin:0 0 44px; }
+  .center { text-align:center; } .center .sub { margin-left:auto; margin-right:auto; }
+
+  .pillars { display:grid; grid-template-columns:repeat(3,1fr); gap:18px; }
+  .card { background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); padding:28px; }
+  .card h3 { margin:14px 0 8px; font-size:20px; }
+  .card p { margin:0; color:var(--muted); }
+  .ico { width:44px; height:44px; border-radius:12px; display:grid; place-items:center; background:color-mix(in srgb,var(--accent) 16%, transparent); color:var(--accent); }
+  .ico svg { width:24px; height:24px; stroke:currentColor; fill:none; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; }
+
+  .features { display:grid; grid-template-columns:repeat(4,1fr); gap:14px; }
+  .feat { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:20px; }
+  .feat b { display:block; margin-bottom:4px; }
+  .feat span { color:var(--muted); font-size:15px; }
+
+  .split { display:grid; grid-template-columns:1fr 1fr; gap:28px; align-items:center; }
+  .split .shot { margin:0; }
+  ul.tick { list-style:none; padding:0; margin:20px 0 0; display:grid; gap:10px; }
+  ul.tick li { padding-left:30px; position:relative; color:var(--muted); }
+  ul.tick li::before { content:""; position:absolute; left:0; top:6px; width:18px; height:18px; border-radius:50%; background:var(--accent); -webkit-mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5' fill='none' stroke='black' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/contain no-repeat; mask:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M5 12.5l4.5 4.5L19 7.5' fill='none' stroke='black' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E") center/contain no-repeat; }
+  ul.tick li b { color:var(--text); }
+
+  /* Downloads */
+  #download { background:linear-gradient(180deg,transparent,color-mix(in srgb,var(--accent) 5%, transparent),transparent); }
+  .dl-grid { display:grid; grid-template-columns:repeat(3,1fr); gap:18px; }
+  .dl { display:flex; flex-direction:column; gap:14px; background:var(--panel); border:1px solid var(--line); border-radius:var(--radius); padding:26px; transition:border-color .2s, transform .2s; }
+  .dl.rec { border-color:var(--accent); box-shadow:0 0 0 1px var(--accent) inset; }
+  .dl:hover { transform:translateY(-2px); }
+  .dl h3 { margin:0; font-size:20px; display:flex; align-items:center; gap:10px; }
+  .dl h3 .os { width:26px; height:26px; color:var(--accent); }
+  .dl p { margin:0; color:var(--muted); font-size:15px; flex:1; }
+  .dl code { display:block; background:var(--panel2); border:1px solid var(--line); border-radius:10px; padding:9px 12px; font:13px/1.4 ui-monospace,SFMono-Regular,Menlo,Consolas,monospace; color:var(--text); overflow-x:auto; white-space:nowrap; }
+  .dl .row { display:flex; flex-direction:column; gap:8px; }
+  .dl .btn { justify-content:center; }
+  .tag { font-size:12px; font-weight:700; letter-spacing:.04em; text-transform:uppercase; color:var(--accent-ink); background:var(--accent); padding:2px 8px; border-radius:6px; }
+  .note { margin-top:26px; color:var(--muted); font-size:15px; text-align:center; }
+
+  /* FAQ */
+  details { background:var(--panel); border:1px solid var(--line); border-radius:14px; padding:18px 22px; margin-bottom:12px; }
+  summary { cursor:pointer; font-weight:600; }
+  details p { color:var(--muted); margin:10px 0 0; }
+
+  footer { border-top:1px solid var(--line); padding:36px 0 60px; color:var(--muted); font-size:15px; }
+  footer .wrap { display:flex; gap:20px; flex-wrap:wrap; align-items:center; justify-content:space-between; }
+  footer a { text-decoration:none; } footer a:hover { color:var(--text); }
+
+  @media (max-width:900px) {
+    .pillars, .dl-grid { grid-template-columns:1fr; }
+    .features { grid-template-columns:repeat(2,1fr); }
+    .split { grid-template-columns:1fr; }
+    nav .links a.hide-m { display:none; }
+  }
+  @media (max-width:520px) { .features { grid-template-columns:1fr; } .wrap { padding:0 18px; } }
+</style>
+</head>
+<body>
+
+<nav>
+  <div class="wrap">
+    <a class="brand" href="#top"><img src="icon.png" alt="">Cutline</a>
+    <div class="links">
+      <a class="hide-m" href="#why" data-i18n="nav_why">Why Cutline</a>
+      <a class="hide-m" href="#features" data-i18n="nav_features">Features</a>
+      <a href="#download" data-i18n="nav_download">Download</a>
+      <a class="hide-m" href="#" id="gh-link">GitHub</a>
+      <select class="lang" id="lang" aria-label="Language">
+        <option value="en">English</option>
+        <option value="de">Deutsch</option>
+      </select>
+    </div>
+  </div>
+</nav>
+
+<header class="hero" id="top">
+  <div class="wrap">
+    <span class="pill" data-i18n="pill">Free · Windows · Linux · macOS</span>
+    <h1><span data-i18n="h1a">Video editing that</span> <em data-i18n="h1b">gets out of your way.</em></h1>
+    <p class="lead" data-i18n="lead">Cutline is a simple video editor. Open a clip, cut it, blur what needs hiding, add music, export. No projects, no import, no clutter – just the tools you actually use.</p>
+    <div class="cta">
+      <a class="btn primary" href="#download" id="hero-dl"><span data-i18n="get">Download</span> <span id="hero-os"></span></a>
+      <a class="btn" href="#features" data-i18n="see">See what it does</a>
+    </div>
+    <div class="shot"><img src="img/edit.png" alt="Cutline editing a video with timeline, thumbnails and a blur area"></div>
+  </div>
+</header>
+
+<section id="why">
+  <div class="wrap">
+    <div class="center">
+      <h2 data-i18n="why_h">Simple on purpose.</h2>
+      <p class="sub" data-i18n="why_s">Most editors make you learn them first. Cutline gets out of the way: everything sits on one screen, and every button does what its icon says.</p>
+    </div>
+    <div class="pillars">
+      <div class="card">
+        <div class="ico"><svg viewBox="0 0 24 24"><path d="M13 2L4 14h7l-1 8 9-12h-7l1-8z"/></svg></div>
+        <h3 data-i18n="p1_h">Opens instantly</h3>
+        <p data-i18n="p1_p">Drag a video in and it plays. No import, no project files, no waiting for previews to render.</p>
+      </div>
+      <div class="card">
+        <div class="ico"><svg viewBox="0 0 24 24"><circle cx="6" cy="18" r="3"/><circle cx="18" cy="18" r="3"/><path d="M8 16L19 4M16 16L5 4"/></svg></div>
+        <h3 data-i18n="p2_h">Everything in reach</h3>
+        <p data-i18n="p2_p">Trim, split, speed up, blur, add images, video and music – one timeline, one toolbar, one key per action.</p>
+      </div>
+      <div class="card">
+        <div class="ico"><svg viewBox="0 0 24 24"><path d="M12 15V3M7 8l5-5 5 5M4 15v5h16v-5"/></svg></div>
+        <h3 data-i18n="p3_h">Export that makes sense</h3>
+        <p data-i18n="p3_p">Pick resolution, frame rate and quality. Cutline only offers what fits your source, so files never get bigger for nothing.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="features">
+  <div class="wrap">
+    <h2 data-i18n="f_h">Everything you need. Nothing you don't.</h2>
+    <p class="sub" data-i18n="f_s">A short list, done properly.</p>
+    <div class="features">
+      <div class="feat"><b data-i18n="f1_h">Cut &amp; trim</b><span data-i18n="f1_p">Drag the edges, split at the playhead, remove segments.</span></div>
+      <div class="feat"><b data-i18n="f2_h">Speed per segment</b><span data-i18n="f2_p">Slow down or speed up any part, from 0.1× to 16×.</span></div>
+      <div class="feat"><b data-i18n="f3_h">Real blur</b><span data-i18n="f3_p">Hide faces, plates or text – and see the blur live in the preview.</span></div>
+      <div class="feat"><b data-i18n="f4_h">Images &amp; overlays</b><span data-i18n="f4_p">Place a logo or picture anywhere, for as long as you like.</span></div>
+      <div class="feat"><b data-i18n="f5_h">More videos</b><span data-i18n="f5_p">Insert other clips, even in a different size – they fit automatically.</span></div>
+      <div class="feat"><b data-i18n="f6_h">Music &amp; sound</b><span data-i18n="f6_p">Add mp3 and other audio on its own track with volume control.</span></div>
+      <div class="feat"><b data-i18n="f7_h">Timeline thumbnails</b><span data-i18n="f7_p">See your video on the timeline so you find the right spot fast.</span></div>
+      <div class="feat"><b data-i18n="f8_h">Fullscreen preview</b><span data-i18n="f8_p">F11 for just the video. Click to pause, arrows to skip 5 seconds.</span></div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="wrap split">
+    <div>
+      <h2 data-i18n="s_h">Made to look good, too.</h2>
+      <p class="sub" style="margin-bottom:0" data-i18n="s_s">A calm interface with soft ambient light around your video – and themes for every taste, from mint dark to full Windows XP.</p>
+      <ul class="tick">
+        <li data-i18n-html="s_l1"><b>12 languages</b>, asked once on first start.</li>
+        <li data-i18n-html="s_l2"><b>7 themes</b> – Mint, Ocean, Violet, Sunset, Light, Windows XP, Terminal.</li>
+        <li data-i18n-html="s_l3"><b>GPU encoding</b> when your hardware supports it, otherwise fast x264.</li>
+      </ul>
+    </div>
+    <div class="shot"><img src="img/xp.png" alt="Cutline with the Windows XP theme" loading="lazy"></div>
+  </div>
+</section>
+
+<section id="download">
+  <div class="wrap">
+    <div class="center">
+      <h2 data-i18n="d_h">Download Cutline</h2>
+      <p class="sub" data-i18n="d_s">Free for everyone. Pick your system – every download comes straight from GitHub Releases.</p>
+    </div>
+    <div class="dl-grid">
+
+      <div class="dl" data-os="windows">
+        <h3><svg class="os" viewBox="0 0 24 24" fill="currentColor"><path d="M3 5.5l8-1.1v7.1H3zM12 4.3l9-1.3v8.5h-9zM3 12.5h8v7.1l-8-1.1zM12 12.5h9V21l-9-1.3z"/></svg>Windows</h3>
+        <p data-i18n="d_win">Portable – unzip and run Cutline.exe. Includes everything, Windows 10 or newer.</p>
+        <a class="btn primary" data-file="Cutline-windows-x64.zip" href="#">Cutline-windows-x64.zip</a>
+      </div>
+
+      <div class="dl" data-os="linux">
+        <h3><svg class="os" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3c-2.5 0-3 2.5-3 5 0 2-2 3.5-2 6.5C7 18 9 21 12 21s5-3 5-6.5c0-3-2-4.5-2-6.5 0-2.5-.5-5-3-5z"/></svg>Linux · .deb</h3>
+        <p data-i18n="d_deb">For Debian, Ubuntu, Mint and friends.</p>
+        <div class="row"><code>sudo apt install ./cutline_amd64.deb</code>
+        <a class="btn primary" data-file="cutline_amd64.deb" href="#">cutline_amd64.deb</a></div>
+      </div>
+
+      <div class="dl" data-os="linux">
+        <h3><svg class="os" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3c-2.5 0-3 2.5-3 5 0 2-2 3.5-2 6.5C7 18 9 21 12 21s5-3 5-6.5c0-3-2-4.5-2-6.5 0-2.5-.5-5-3-5z"/></svg>Linux · Arch</h3>
+        <p data-i18n="d_arch">Native package for Arch, Manjaro and EndeavourOS.</p>
+        <div class="row"><code>sudo pacman -U cutline-x86_64.pkg.tar.zst</code>
+        <a class="btn primary" data-file="cutline-x86_64.pkg.tar.zst" href="#">cutline-x86_64.pkg.tar.zst</a></div>
+      </div>
+
+      <div class="dl" data-os="linux">
+        <h3><svg class="os" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7h18v13H3zM3 7l3-4h12l3 4M9 12h6"/></svg>Linux · tar.gz</h3>
+        <p data-i18n="d_tar">Any other distribution. Needs Qt 6 from your package manager.</p>
+        <div class="row"><code>tar xf cutline-linux-x86_64.tar.gz &amp;&amp; ./cutline-linux-x86_64/install.sh</code>
+        <a class="btn primary" data-file="cutline-linux-x86_64.tar.gz" href="#">cutline-linux-x86_64.tar.gz</a></div>
+      </div>
+
+      <div class="dl" data-os="mac">
+        <h3><svg class="os" viewBox="0 0 24 24" fill="currentColor"><path d="M16.4 12.6c0-2.4 2-3.5 2.1-3.6-1.2-1.700-3-1.900-3.600-1.900-1.500-.2-3 .9-3.800.9s-2-.9-3.300-.9C6 7.200 4.400 8.200 3.500 9.700c-1.800 3.100-.5 7.700 1.300 10.200.9 1.200 1.900 2.600 3.200 2.500 1.300-.1 1.800-.8 3.300-.8s2 .8 3.300.8 2.200-1.200 3.100-2.400c1-1.400 1.400-2.800 1.400-2.900-.1 0-2.700-1-2.700-4.500zM14 5.300c.7-.8 1.200-2 1-3.100-1 0-2.200.7-2.900 1.500-.6.700-1.200 1.900-1 3 1.100.1 2.200-.6 2.900-1.400z"/></svg>macOS · Apple Silicon</h3>
+        <p data-i18n="d_mac_arm">For Macs with M1, M2, M3, M4 or newer.</p>
+        <a class="btn primary" data-file="Cutline-macos-apple-silicon.dmg" href="#">Cutline-macos-apple-silicon.dmg</a>
+      </div>
+
+      <div class="dl" data-os="mac">
+        <h3><svg class="os" viewBox="0 0 24 24" fill="currentColor"><path d="M16.4 12.6c0-2.4 2-3.5 2.1-3.6-1.2-1.700-3-1.900-3.600-1.900-1.500-.2-3 .9-3.800.9s-2-.9-3.300-.9C6 7.200 4.400 8.200 3.500 9.700c-1.800 3.100-.5 7.700 1.300 10.200.9 1.200 1.900 2.600 3.200 2.500 1.300-.1 1.800-.8 3.300-.8s2 .8 3.300.8 2.200-1.200 3.100-2.400c1-1.400 1.400-2.800 1.400-2.900-.1 0-2.700-1-2.700-4.500zM14 5.300c.7-.8 1.200-2 1-3.100-1 0-2.200.7-2.900 1.500-.6.700-1.200 1.900-1 3 1.100.1 2.200-.6 2.900-1.400z"/></svg>macOS · Intel</h3>
+        <p data-i18n="d_mac_intel">For Macs with an Intel processor.</p>
+        <a class="btn primary" data-file="Cutline-macos-intel.dmg" href="#">Cutline-macos-intel.dmg</a>
+      </div>
+
+    </div>
+    <p class="note" data-i18n="d_note">On macOS the app is not notarized: right-click Cutline → Open the first time. Not sure which Mac you have? Apple menu → About This Mac.</p>
+    <p class="note"><a id="all-releases" href="#" data-i18n="d_all">All versions and release notes →</a></p>
+  </div>
+</section>
+
+<section id="faq">
+  <div class="wrap" style="max-width:820px">
+    <h2 class="center" data-i18n="q_h">Questions</h2>
+    <p class="sub center" data-i18n="q_s">Short answers.</p>
+    <details><summary data-i18n="q1">Is it really free?</summary><p data-i18n="q1a">Yes. Cutline is open source under the MIT license – free to use, share and change.</p></details>
+    <details><summary data-i18n="q2">Does it change my original videos?</summary><p data-i18n="q2a">Never. Your files stay untouched. Cutline only writes a new file when you export.</p></details>
+    <details><summary data-i18n="q3">Which formats does it open?</summary><p data-i18n="q3a">mp4, mov, mkv, webm, avi and more. Exports are mp4 (H.264 + AAC), which plays everywhere.</p></details>
+    <details><summary data-i18n="q4">Do I need to install anything else?</summary><p data-i18n="q4a">Windows and macOS builds include everything. The .deb and Arch packages pull in Qt and ffmpeg from your distribution automatically; the tar.gz needs Qt 6 installed.</p></details>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <span>© 2026 Cutline · MIT License</span>
+    <span><a id="gh-link2" href="#">GitHub</a> · <a id="lic-link" href="#">License</a> · <a id="rel-link" href="#">Releases</a></span>
+  </div>
+</footer>
+
+<script>
+(function () {
+  // --- Repo aus der GitHub-Pages-URL ableiten (owner.github.io/repo) -------------------------
+  var host = location.hostname, parts = location.pathname.split('/').filter(Boolean);
+  var owner = host.endsWith('.github.io') ? host.split('.')[0] : null;
+  var repo = parts[0] || 'cutline';
+  var base = owner ? 'https://github.com/' + owner + '/' + repo : 'https://github.com/';
+  var latest = owner ? base + '/releases/latest/download/' : base;
+  document.querySelectorAll('[data-file]').forEach(function (a) { a.href = latest + a.dataset.file; });
+  ['gh-link','gh-link2'].forEach(function (id) { document.getElementById(id).href = base; });
+  document.getElementById('all-releases').href = owner ? base + '/releases' : base;
+  document.getElementById('rel-link').href = owner ? base + '/releases' : base;
+  document.getElementById('lic-link').href = owner ? base + '/blob/main/LICENSE' : base;
+
+  // --- Betriebssystem erkennen und passenden Download hervorheben -------------------------------
+  var ua = navigator.userAgent, os = /Windows/.test(ua) ? 'windows' : /Mac/.test(ua) ? 'mac' : /Linux|X11/.test(ua) ? 'linux' : null;
+  var names = { windows: 'Windows', mac: 'macOS', linux: 'Linux' };
+  if (os) {
+    document.querySelectorAll('.dl[data-os="' + os + '"]').forEach(function (d) { d.classList.add('rec'); });
+    document.getElementById('hero-os').textContent = '· ' + names[os];
+  }
+
+  // --- Sprache -------------------------------------------------------------------------------
+  var T = {
+    de: {
+      nav_why:'Warum Cutline', nav_features:'Funktionen', nav_download:'Download',
+      pill:'Kostenlos · Windows · Linux · macOS', h1a:'Videoschnitt, der dir', h1b:'nicht im Weg steht.',
+      lead:'Cutline ist ein einfacher Video-Editor. Clip öffnen, schneiden, verpixeln was weg soll, Musik dazu, exportieren. Keine Projekte, kein Import, kein Ballast – nur die Werkzeuge, die du wirklich brauchst.',
+      get:'Herunterladen', see:'Das kann Cutline',
+      why_h:'Mit Absicht einfach.', why_s:'Die meisten Editoren muss man erst lernen. Cutline hält sich zurück: alles auf einem Bildschirm, und jeder Knopf tut, was sein Symbol sagt.',
+      p1_h:'Öffnet sofort', p1_p:'Video reinziehen und es läuft. Kein Import, keine Projektdateien, kein Warten auf Vorschauen.',
+      p2_h:'Alles griffbereit', p2_p:'Schneiden, teilen, Tempo, Unschärfe, Bilder, Videos und Musik – eine Timeline, eine Leiste, eine Taste pro Aktion.',
+      p3_h:'Export mit Verstand', p3_p:'Auflösung, Bildrate und Qualität wählen. Cutline bietet nur an, was zu deinem Material passt – Dateien werden nie umsonst größer.',
+      f_h:'Alles, was du brauchst. Nichts, was du nicht brauchst.', f_s:'Eine kurze Liste, sauber gemacht.',
+      f1_h:'Schneiden & kürzen', f1_p:'Kanten ziehen, am Playhead teilen, Abschnitte entfernen.',
+      f2_h:'Tempo pro Abschnitt', f2_p:'Jeden Teil verlangsamen oder beschleunigen, von 0,1× bis 16×.',
+      f3_h:'Echte Unschärfe', f3_p:'Gesichter, Kennzeichen oder Text verbergen – und die Unschärfe live in der Vorschau sehen.',
+      f4_h:'Bilder & Overlays', f4_p:'Logo oder Bild an beliebiger Stelle platzieren, so lange du willst.',
+      f5_h:'Weitere Videos', f5_p:'Andere Clips einfügen, auch in anderer Größe – sie passen sich automatisch an.',
+      f6_h:'Musik & Ton', f6_p:'mp3 und andere Audiodateien auf einer eigenen Spur, mit Lautstärkeregler.',
+      f7_h:'Vorschau in der Timeline', f7_p:'Dein Video direkt auf der Timeline sehen und die richtige Stelle schneller finden.',
+      f8_h:'Vollbild-Vorschau', f8_p:'F11 für nur das Video. Klick pausiert, Pfeiltasten springen 5 Sekunden.',
+      s_h:'Auch schön anzusehen.', s_s:'Eine ruhige Oberfläche mit sanftem Umgebungslicht um dein Video – und Designs für jeden Geschmack, von Mint-Dunkel bis Windows XP.',
+      s_l1:'<b>12 Sprachen</b>, einmal beim ersten Start gewählt.', s_l2:'<b>7 Designs</b> – Mint, Ocean, Violett, Sunset, Hell, Windows XP, Terminal.', s_l3:'<b>GPU-Encoding</b>, wenn deine Hardware es kann, sonst schnelles x264.',
+      d_h:'Cutline herunterladen', d_s:'Für alle kostenlos. System wählen – jeder Download kommt direkt von GitHub Releases.',
+      d_win:'Portabel – entpacken und Cutline.exe starten. Alles enthalten, ab Windows 10.',
+      d_deb:'Für Debian, Ubuntu, Mint und Verwandte.', d_arch:'Natives Paket für Arch, Manjaro und EndeavourOS.',
+      d_tar:'Jede andere Distribution. Benötigt Qt 6 aus deiner Paketverwaltung.',
+      d_mac_arm:'Für Macs mit M1, M2, M3, M4 oder neuer.', d_mac_intel:'Für Macs mit Intel-Prozessor.',
+      d_note:'Unter macOS ist die App nicht notarisiert: beim ersten Mal Rechtsklick auf Cutline → Öffnen. Nicht sicher, welchen Mac du hast? Apple-Menü → Über diesen Mac.',
+      d_all:'Alle Versionen und Release-Notes →',
+      q_h:'Fragen', q_s:'Kurze Antworten.',
+      q1:'Ist es wirklich kostenlos?', q1a:'Ja. Cutline ist Open Source unter der MIT-Lizenz – frei nutzbar, teilbar und veränderbar.',
+      q2:'Verändert es meine Originalvideos?', q2a:'Nie. Deine Dateien bleiben unberührt. Cutline schreibt erst beim Export eine neue Datei.',
+      q3:'Welche Formate öffnet es?', q3a:'mp4, mov, mkv, webm, avi und mehr. Exportiert wird als mp4 (H.264 + AAC), das überall läuft.',
+      q4:'Muss ich noch etwas installieren?', q4a:'Windows- und macOS-Versionen enthalten alles. Die .deb- und Arch-Pakete holen Qt und ffmpeg automatisch aus deiner Distribution; das tar.gz braucht installiertes Qt 6.'
+    }
+  };
+  var orig = {};
+  document.querySelectorAll('[data-i18n],[data-i18n-html]').forEach(function (el) {
+    var k = el.dataset.i18n || el.dataset.i18nHtml; orig[k] = el.innerHTML;
+  });
+  function apply(lang) {
+    document.documentElement.lang = lang;
+    document.querySelectorAll('[data-i18n],[data-i18n-html]').forEach(function (el) {
+      var k = el.dataset.i18n || el.dataset.i18nHtml;
+      var v = lang === 'en' ? orig[k] : (T[lang] && T[lang][k]);
+      if (v != null) el.innerHTML = v;
+    });
+    try { localStorage.setItem('lang', lang); } catch (e) {}
+  }
+  var sel = document.getElementById('lang'), saved = null;
+  try { saved = localStorage.getItem('lang'); } catch (e) {}
+  var start = saved || (navigator.language || 'en').slice(0, 2);
+  if (!T[start]) start = 'en';
+  sel.value = start; if (start !== 'en') apply(start);
+  sel.addEventListener('change', function () { apply(sel.value); });
+})();
+</script>
+</body>
+</html>

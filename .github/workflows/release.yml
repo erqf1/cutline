@@ -1,0 +1,173 @@
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  QT_VERSION: '6.8.3'
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          arch: win64_msvc2022_64
+          modules: qtmultimedia
+          cache: true
+      - uses: ilammy/msvc-dev-cmd@v1
+      - name: Build
+        shell: pwsh
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release "-DCMAKE_PREFIX_PATH=$env:QT_ROOT_DIR"
+          cmake --build build
+      - name: Package
+        shell: pwsh
+        run: |
+          pip install imageio-ffmpeg
+          $ff = python -c "import imageio_ffmpeg as i;print(i.get_ffmpeg_exe())"
+          New-Item -ItemType Directory -Path dist/Cutline | Out-Null
+          windeployqt --no-translations --no-system-d3d-compiler --no-opengl-sw --dir dist/Cutline build/Cutline.exe
+          Copy-Item build/Cutline.exe dist/Cutline/
+          Copy-Item $ff dist/Cutline/ffmpeg.exe
+          Copy-Item LICENSE, README.md dist/Cutline/
+          Compress-Archive -Path dist/Cutline -DestinationPath Cutline-windows-x64.zip
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: Cutline-windows-x64.zip
+
+  linux:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qt6-base-dev qt6-multimedia-dev libgl1-mesa-dev cmake ninja-build python3-venv dpkg-dev
+      - name: Build
+        run: |
+          cmake -S . -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DCMAKE_INSTALL_PREFIX=/usr
+          cmake --build build
+          strip build/cutline
+      - name: Version
+        run: |
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then echo "VER=${GITHUB_REF_NAME#v}" >> "$GITHUB_ENV"; else echo "VER=0.0.0" >> "$GITHUB_ENV"; fi
+      - name: deb package
+        run: |
+          DESTDIR="$PWD/pkg/deb" cmake --install build
+          mkdir -p pkg/deb/DEBIAN
+          {
+            echo "Package: cutline"
+            echo "Version: ${VER}"
+            echo "Section: video"
+            echo "Priority: optional"
+            echo "Architecture: amd64"
+            echo "Depends: libqt6widgets6, libqt6multimedia6, libqt6multimediawidgets6, ffmpeg"
+            echo "Recommends: gstreamer1.0-plugins-good, gstreamer1.0-plugins-bad, gstreamer1.0-libav"
+            echo "Maintainer: Cutline <noreply@users.noreply.github.com>"
+            echo "Description: Simple, fast video editor"
+            echo " Cut, speed up, blur, add images, videos and music, then export."
+          } > pkg/deb/DEBIAN/control
+          dpkg-deb --build --root-owner-group pkg/deb cutline_amd64.deb
+      - name: tar.gz package
+        run: |
+          python3 -m venv .venv
+          .venv/bin/pip install imageio-ffmpeg
+          FF=$(.venv/bin/python -c "import imageio_ffmpeg as i;print(i.get_ffmpeg_exe())")
+          D=cutline-linux-x86_64
+          mkdir "$D"
+          cp build/cutline "$D/cutline"
+          cp "$FF" "$D/ffmpeg"
+          chmod +x "$D/ffmpeg"
+          cp assets/icon.png assets/cutline.desktop packaging/linux/install.sh LICENSE README.md "$D/"
+          tar czf cutline-linux-x86_64.tar.gz "$D"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: linux
+          path: |
+            cutline_amd64.deb
+            cutline-linux-x86_64.tar.gz
+
+  arch:
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    steps:
+      - name: Dependencies
+        run: pacman -Syu --noconfirm base-devel git cmake ninja qt6-base qt6-multimedia qt6-multimedia-ffmpeg ffmpeg
+      - uses: actions/checkout@v4
+      - name: makepkg
+        run: |
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then VER="${GITHUB_REF_NAME#v}"; else VER="0.0.0"; fi
+          useradd -m builder
+          mkdir /home/builder/pkg
+          tar czf /home/builder/pkg/cutline-src.tar.gz --exclude=.git --exclude=build --exclude=dist --exclude=docs .
+          cp packaging/arch/PKGBUILD /home/builder/pkg/
+          sed -i "s/^pkgver=.*/pkgver=${VER}/" /home/builder/pkg/PKGBUILD
+          chown -R builder /home/builder/pkg
+          cd /home/builder/pkg
+          su builder -c "makepkg -f --noconfirm"
+          cp cutline-*-x86_64.pkg.tar.zst "$GITHUB_WORKSPACE/cutline-x86_64.pkg.tar.zst"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: arch
+          path: cutline-x86_64.pkg.tar.zst
+
+  macos:
+    strategy:
+      matrix:
+        include:
+          - os: macos-15-intel
+            name: intel
+          - os: macos-15
+            name: apple-silicon
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          modules: qtmultimedia
+          cache: true
+      - name: Build
+        run: |
+          cmake -S . -B build -DCMAKE_BUILD_TYPE=Release "-DCMAKE_PREFIX_PATH=$QT_ROOT_DIR"
+          cmake --build build --parallel
+      - name: Package
+        run: |
+          python3 -m venv .venv
+          .venv/bin/pip install imageio-ffmpeg
+          FF=$(.venv/bin/python -c "import imageio_ffmpeg as i;print(i.get_ffmpeg_exe())")
+          macdeployqt build/Cutline.app
+          cp "$FF" build/Cutline.app/Contents/MacOS/ffmpeg
+          chmod +x build/Cutline.app/Contents/MacOS/ffmpeg
+          codesign --force --deep -s - build/Cutline.app
+          mkdir dmg
+          cp -R build/Cutline.app dmg/
+          ln -s /Applications dmg/Applications
+          hdiutil create -volname Cutline -srcfolder dmg -ov -format UDZO "Cutline-macos-${{ matrix.name }}.dmg"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-${{ matrix.name }}
+          path: Cutline-macos-${{ matrix.name }}.dmg
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [windows, linux, arch, macos]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
