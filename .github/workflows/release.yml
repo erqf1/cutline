@@ -113,7 +113,10 @@ jobs:
         run: pacman -Syu --noconfirm base-devel git cmake ninja qt6-base qt6-multimedia qt6-multimedia-ffmpeg ffmpeg
       - uses: actions/checkout@v4
       - name: makepkg
+        shell: bash
         run: |
+          set -Eeuo pipefail
+          trap 'echo "::error title=arch step failed::line $LINENO: $BASH_COMMAND"' ERR
           if [ "${GITHUB_REF_TYPE}" = "tag" ]; then VER="${GITHUB_REF_NAME#v}"; else VER="0.0.0"; fi
           useradd -m builder
           mkdir /home/builder/pkg
