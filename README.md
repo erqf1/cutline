@@ -16,7 +16,7 @@ Get the latest build from the [Releases page](../../releases/latest):
 
 | Platform | File |
 | --- | --- |
-| Windows (x64) installer | `Cutline-windows-x64-setup.exe` – installs per user and adds Cutline to the **Open with** menu of videos |
+| Windows (x64) installer | `Cutline-windows-x64-setup.exe` – lets you choose the install folder and adds Cutline to the **Open with** menu of videos |
 | Windows (x64) portable | `Cutline-windows-x64.zip` – unzip and run `Cutline.exe` |
 | Linux (Debian / Ubuntu) | `cutline_amd64.deb` – `sudo apt install ./cutline_amd64.deb` |
 | Linux (Arch) | `cutline-x86_64.pkg.tar.zst` – `sudo pacman -U cutline-x86_64.pkg.tar.zst` |

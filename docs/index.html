@@ -547,8 +547,7 @@
   }
   var sel = $('#lang'), saved = null;
   try { saved = localStorage.getItem('lang'); } catch (e) {}
-  var start = saved || (navigator.language || 'en').slice(0, 2);
-  if (!T[start]) start = 'en';
+  var start = saved && T[saved] ? saved : 'en';   // Englisch ist Standard; Deutsch nur nach eigener Auswahl
   sel.value = start;
   sel.addEventListener('change', function () { applyLang(sel.value); });
   applyLang(start);
