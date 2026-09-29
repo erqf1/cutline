@@ -8,6 +8,7 @@ url="https://github.com/OWNER/cutline"
 license=('MIT')
 depends=('qt6-base' 'qt6-multimedia' 'qt6-multimedia-ffmpeg' 'ffmpeg')
 makedepends=('cmake' 'ninja')
+options=('!debug')
 # CI packt den Quellbaum als cutline-src.tar.gz. Fuer ein AUR-Paket stattdessen die Release-Quelle eintragen.
 source=("cutline-src.tar.gz")
 sha256sums=('SKIP')

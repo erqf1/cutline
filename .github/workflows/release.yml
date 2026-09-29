@@ -130,7 +130,7 @@ jobs:
             echo "::error title=makepkg failed::$(cat /tmp/tail.txt)"
             exit 1
           fi
-          cp cutline-*-x86_64.pkg.tar.zst "$GITHUB_WORKSPACE/cutline-x86_64.pkg.tar.zst"
+          cp cutline-[0-9]*-x86_64.pkg.tar.zst "$GITHUB_WORKSPACE/cutline-x86_64.pkg.tar.zst"
       - uses: actions/upload-artifact@v4
         with:
           name: arch
