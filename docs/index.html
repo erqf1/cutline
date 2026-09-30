@@ -25,12 +25,12 @@
   [data-theme="dark"] {
     --bg:#07080d; --bg2:#0b0d14; --card:#10131c; --card2:#161a26; --line:rgba(255,255,255,.08); --line2:rgba(255,255,255,.14);
     --text:#eef0f7; --muted:#8c92a7; --label:#a78bfa; --shadow:0 30px 80px -20px rgba(0,0,0,.7);
-    --glow1:rgba(109,108,255,.28); --glow2:rgba(180,85,245,.20); --grid:rgba(255,255,255,.035);
+    --glow1:rgba(109,108,255,.28); --glow2:rgba(180,85,245,.20); --grid:rgba(255,255,255,.085);
   }
   [data-theme="light"] {
     --bg:#f6f6fb; --bg2:#ffffff; --card:#ffffff; --card2:#f0f1f8; --line:rgba(22,26,44,.09); --line2:rgba(22,26,44,.16);
     --text:#12141d; --muted:#5b6176; --label:#6d4fe0; --shadow:0 30px 70px -25px rgba(60,60,120,.35);
-    --glow1:rgba(109,108,255,.20); --glow2:rgba(180,85,245,.14); --grid:rgba(20,24,50,.045);
+    --glow1:rgba(109,108,255,.20); --glow2:rgba(180,85,245,.14); --grid:rgba(20,24,50,.10);
   }
   * { box-sizing:border-box; }
   html { scroll-behavior:smooth; scroll-padding-top:80px; }
@@ -62,7 +62,7 @@
     background:radial-gradient(700px 420px at 20% 0%,var(--glow1),transparent 70%),radial-gradient(700px 420px at 82% 8%,var(--glow2),transparent 70%); }
   .hero::after { content:""; position:absolute; inset:0; z-index:-1;
     background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px); background-size:56px 56px;
-    -webkit-mask:radial-gradient(70% 60% at 50% 25%,#000,transparent 75%); mask:radial-gradient(70% 60% at 50% 25%,#000,transparent 75%); }
+    -webkit-mask:radial-gradient(85% 75% at 50% 30%,#000 35%,transparent 85%); mask:radial-gradient(85% 75% at 50% 30%,#000 35%,transparent 85%); }
   .badge { display:inline-flex; align-items:center; gap:9px; padding:6px 14px 6px 8px; border-radius:999px; border:1px solid var(--line2); background:var(--card); font-size:14px; color:var(--muted); }
   .badge b { background:var(--grad); color:#fff; padding:2px 9px; border-radius:999px; font-size:12px; font-weight:650; }
   h1 { font-size:clamp(42px,7.4vw,84px); line-height:1.02; letter-spacing:-.04em; margin:26px auto 22px; max-width:900px; font-weight:800; }
