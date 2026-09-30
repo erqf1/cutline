@@ -72,6 +72,7 @@ MainWindow::MainWindow() {
     uo.repo = "erqf1/cutline";
     uo.appName = "Cutline";
     uo.version = APP_VERSION;
+    uo.innoAppId = "B7D0C3E2-5A41-4C7E-9B61-3F2A8E6D1C90";  // packaging/windows/cutline.iss
     uo.parent = [this] { return static_cast<QWidget*>(this); };
     uo.texts = [] {
         return UpdaterTexts{T("upd_title"), T("upd_text"), T("upd_now"), T("upd_ignore"), T("upd_later"),
@@ -329,26 +330,35 @@ QWidget* MainWindow::buildInspector() {
     v->addStretch();
     insp_->addWidget(pg);
 
-    inspCard_ = new QFrame;
-    inspCard_->setObjectName("card");
-    inspCard_->setFixedWidth(300);
-    auto* cl = new QVBoxLayout(inspCard_);
-    cl->setContentsMargins(12, 12, 12, 12);
-    cl->setSpacing(10);
-    auto* tabs = new QHBoxLayout;
-    tabs->setSpacing(6);
-    tabMedia_ = mk("media", nullptr, Ic::AddVideo);
-    tabProps_ = mk("properties", nullptr, Ic::Edit);
-    auto* grp = new QButtonGroup(inspCard_);
-    for (QPushButton* b : {tabMedia_, tabProps_}) {
-        b->setCheckable(true);
-        grp->addButton(b);
-        tabs->addWidget(b, 1);
-    }
-    tabMedia_->setChecked(true);
-    cl->addLayout(tabs);
-    rightStack_ = new QStackedWidget;
-    rightStack_->addWidget(buildMediaPage());
+    // Medien links vom Video, Eigenschaften rechts davon - beide immer sichtbar
+    auto card = [](int width) {
+        auto* c = new QFrame;
+        c->setObjectName("card");
+        c->setFixedWidth(width);
+        auto* l = new QVBoxLayout(c);
+        l->setContentsMargins(12, 12, 12, 12);
+        l->setSpacing(10);
+        return c;
+    };
+    // Überschrift mit Symbol (flach, nicht anklickbar - sieht nicht wie ein Knopf aus)
+    auto header = [this](const char* text, Ic ic) {
+        QPushButton* b = mk(text, nullptr, ic);
+        b->setFlat(true);
+        b->setFocusPolicy(Qt::NoFocus);
+        b->setAttribute(Qt::WA_TransparentForMouseEvents);
+        b->setStyleSheet("QPushButton { background: transparent; border: none; padding: 2px 0; text-align: left;"
+                         " font-weight: 600; font-size: 14px; }");
+        return b;
+    };
+    mediaCard_ = card(260);
+    tabMedia_ = header("media", Ic::AddVideo);
+    mediaCard_->layout()->addWidget(tabMedia_);
+    mediaCard_->layout()->addWidget(buildMediaPage());
+
+    inspCard_ = card(300);
+    auto* cl = static_cast<QVBoxLayout*>(inspCard_->layout());
+    tabProps_ = header("properties", Ic::Edit);
+    cl->addWidget(tabProps_);
     // Eigenschaften scrollen, wenn sie nicht ganz hineinpassen
     auto* inspScroll = new QScrollArea;
     inspScroll->setObjectName("plain");
@@ -358,10 +368,7 @@ QWidget* MainWindow::buildInspector() {
     inspScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     inspScroll->setStyleSheet("QScrollArea#plain { border: none; background: transparent; }"
                               "QScrollArea#plain > QWidget > QWidget { background: transparent; }");
-    rightStack_->addWidget(inspScroll);
-    cl->addWidget(rightStack_, 1);
-    connect(tabMedia_, &QPushButton::clicked, this, [this] { rightStack_->setCurrentIndex(0); });
-    connect(tabProps_, &QPushButton::clicked, this, [this] { rightStack_->setCurrentIndex(1); });
+    cl->addWidget(inspScroll, 1);
     return inspCard_;
 }
 
@@ -432,7 +439,10 @@ void MainWindow::buildUi() {
     });
     connect(slider_, &QSlider::sliderReleased, this, [this] {
         scrubPrev_->hide();
-        seek(slider_->value() / 10000.0 * pr_.total());
+        // Nur springen, wenn noch ein gedrosselter Sprung aussteht oder sich die Stelle geändert hat -
+        // ein zweiter Sprung an dieselbe Stelle spielte den Ton dort ein zweites Mal ab
+        const double t = slider_->value() / 10000.0 * pr_.total();
+        if (seekTimer_->isActive() || std::abs(t - lastSeekT_) > 0.01) seek(t);
     });
     seekTimer_ = new QTimer(this);
     seekTimer_->setSingleShot(true);
@@ -461,10 +471,7 @@ void MainWindow::buildUi() {
     const T list[] = {
         {"split", nullptr, Ic::Scissors, " (S)", &MainWindow::doSplit},
         {"remove_piece", nullptr, Ic::Trash, " (Del)", &MainWindow::doDelete},
-        {"trim_start", nullptr, Ic::TrimStart, " (Q)", &MainWindow::doTrimStart},
-        {"trim_end", nullptr, Ic::TrimEnd, " (W)", &MainWindow::doTrimEnd},
         {"blur", nullptr, Ic::Blur, " (B)", &MainWindow::addBlur},
-        {"image", nullptr, Ic::Image, " (I)", &MainWindow::addImage},
         {"text", nullptr, Ic::Text, " (T)", &MainWindow::addText},
         {nullptr, "undo", Ic::Undo, "", &MainWindow::doUndo},
         {nullptr, "redo", Ic::Redo, "", &MainWindow::doRedo},
@@ -501,8 +508,10 @@ void MainWindow::buildUi() {
 
     auto* mid = new QHBoxLayout;
     mid->setSpacing(12);
+    QWidget* inspector = buildInspector();
+    mid->addWidget(mediaCard_);
     mid->addWidget(view_, 1);
-    mid->addWidget(buildInspector());
+    mid->addWidget(inspector);
     auto* root = new QWidget;
     root->setObjectName("root");
     rootLayout_ = new QVBoxLayout(root);
@@ -717,6 +726,7 @@ void MainWindow::applyLayoutVisibility() {
     tools_->setVisible(!fullscreen_ && edit);
     tlScroll_->setVisible(!fullscreen_ && edit);
     inspCard_->setVisible(!fullscreen_ && edit);
+    mediaCard_->setVisible(!fullscreen_ && edit);
     if (fullscreen_) {
         rootLayout_->setContentsMargins(0, 0, 0, 0);
         rootLayout_->setSpacing(0);
@@ -764,10 +774,7 @@ void MainWindow::dropEvent(QDropEvent* e) {
     if (files.isEmpty()) return;
     if (pr_.pieces.isEmpty()) openFile(files.takeFirst());
     for (const QString& f : files) addToBin(f);
-    if (!files.isEmpty()) {
-        btnEdit_->setChecked(true);
-        tabMedia_->click();
-    }
+    if (!files.isEmpty()) btnEdit_->setChecked(true);
 }
 
 void MainWindow::openDialog() {
@@ -1045,6 +1052,7 @@ void MainWindow::seek(double t) {
     if (pr_.pieces.isEmpty()) return;
     seekTimer_->stop();  // ein direkter Sprung ersetzt einen noch ausstehenden gedrosselten
     t = std::clamp(t, 0.0, pr_.total());
+    lastSeekT_ = t;
     double src = 0;
     int i = pr_.locate(t, &src);
     activate(i, src, player_->playbackState() == QMediaPlayer::PlayingState);
@@ -1273,7 +1281,6 @@ void MainWindow::refreshInspector() {
     if (sel != lastSel_) {
         lastSel_ = sel;
         textUndo_ = false;
-        if (au || it || (selPiece_ >= 0 && selPiece_ < pr_.pieces.size())) tabProps_->click();
     }
     textBox_->setVisible(it && it->kind == Item::Text);
     sliderStr_->setVisible(true);
@@ -1626,7 +1633,6 @@ void MainWindow::importMedia() {
         for (int i = 0; i < rest.size(); ++i)
             if (mediaKindOf(rest[i]) == MediaKind::Video) { openFile(rest.takeAt(i)); break; }
     for (const QString& f : rest) addToBin(f);
-    tabMedia_->click();
 }
 
 void MainWindow::addToBin(const QString& path) {
@@ -1921,7 +1927,6 @@ void MainWindow::selfShots(const QString& dir) {
     });
     QTimer::singleShot(6000, this, [=] {
         shot("b2_text");
-        tabMedia_->click();
     });
     QTimer::singleShot(6500, this, [=] {
         shot("b3_media");

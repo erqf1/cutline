@@ -63,7 +63,7 @@ public:
     MainWindow();
     void openFile(const QString& path);
     void selfShots(const QString& dir);
-    void aspectShots(const QString& dir);  // Entwickler-Test: Bildformat umstellen, rendern, exportieren  // Entwickler-Test: rendert das Fenster in PNGs (ohne Bildschirmfoto)
+    void aspectShots(const QString& dir);  // Entwickler-Test: Bildformat umstellen, rendern, exportieren
 
     // EditorHost
     Project& pr() override { return pr_; }
@@ -220,7 +220,6 @@ private:
     std::vector<BtnSpec> btns_;
     QPushButton *btnPlay_, *btnEdit_, *fsBtn_ = nullptr;
     QPushButton *tabMedia_, *tabProps_;
-    QStackedWidget* rightStack_;
     QListWidget* bin_;
     QLabel* lblBinHint_;
     std::unique_ptr<QTemporaryDir> binDir_;
@@ -251,6 +250,8 @@ private:
     QWidget *topbar_, *transport_, *tools_;
     QStackedWidget* insp_;
     QFrame* inspCard_;
+    QFrame* mediaCard_ = nullptr;
+    double lastSeekT_ = -1;  // zuletzt angesprungene Stelle (Ausgabezeit)
     QDoubleSpinBox *spSpeed_, *spT0_, *spT1_;
     Timeline* timeline_;
     QScrollArea* tlScroll_;
