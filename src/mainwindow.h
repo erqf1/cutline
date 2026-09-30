@@ -171,7 +171,7 @@ private:
     int loadedSrc_ = -1;
     bool pending_ = false, pendingPlay_ = false;
     double pendingPos_ = 0, pendingRate_ = 1;
-    double masterVol_ = 0.8;
+    double masterVol_ = 1.0;  // Lautstärke wird pro Abschnitt / Ton-Clip eingestellt
     // Spulen: Player-Sprünge drosseln, bis der Sprung angekommen ist, die alte Position ignorieren
     QTimer* seekTimer_ = nullptr;
     QElapsedTimer seekThrottle_, seekClock_;
@@ -202,9 +202,9 @@ private:
     QLabel* fsHint_ = nullptr;
     QLabel* scrubPrev_ = nullptr;  // Vorschaubild über der Zeitleiste beim Ziehen
     QSlider *slider_, *sliderStr_;
-    QLabel *lblTime_, *lblHint_, *lblPiece_, *lblItem_, *lblStr_, *lblVolIcon_;
+    QLabel *lblTime_, *lblHint_, *lblPiece_, *lblItem_, *lblStr_;
     QLabel *lblInspHint_, *lblSegment_, *lblSpeed_, *lblStart_, *lblEnd_, *lblPieceVol_;
-    QSlider* sliderPieceVol_;
+    QSlider *sliderPieceVol_, *sliderSpeed_;
     QPushButton* btnDelEl_;
     QWidget *topbar_, *transport_, *tools_;
     QStackedWidget* insp_;

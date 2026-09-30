@@ -1,6 +1,8 @@
 #include "mainwindow.h"
 
 #include <QAction>
+#include <QAudioDevice>
+#include <QMediaDevices>
 #include <QDateTime>
 #include <QGraphicsOpacityEffect>
 #include <QPropertyAnimation>
@@ -24,6 +26,31 @@
 #include "theme.h"
 
 static constexpr double kMinPiece = 0.1;
+
+// Tempo-Stufen: unter 1× in 0,05er-Schritten, darüber immer größer
+static const std::vector<double>& speedSteps() {
+    static const std::vector<double> steps = [] {
+        std::vector<double> r;
+        auto add = [&r](double from, double to, double step) {
+            for (int k = 0; from + k * step < to - 1e-9; ++k) r.push_back(std::round((from + k * step) * 100) / 100);
+        };
+        add(0.1, 1.0, 0.05);
+        add(1.0, 2.0, 0.1);
+        add(2.0, 4.0, 0.25);
+        add(4.0, 8.0, 0.5);
+        add(8.0, 16.0 + 1e-6, 1.0);
+        return r;
+    }();
+    return steps;
+}
+
+static int nearestSpeedStep(double sp) {
+    const auto& st = speedSteps();
+    int best = 0;
+    for (int i = 1; i < int(st.size()); ++i)
+        if (std::abs(st[i] - sp) < std::abs(st[best] - sp)) best = i;
+    return best;
+}
 
 MainWindow::MainWindow() {
     resize(1280, 820);
@@ -50,6 +77,13 @@ MainWindow::MainWindow() {
         return QMessageBox::question(this, "Cutline", T("upd_unsaved")) == QMessageBox::Yes;
     };
     updater_ = new Updater(uo, this);
+    // Ton immer über das aktuelle Standardgerät ausgeben (Kopfhörer eingesteckt / Gerät gewechselt)
+    auto* devices = new QMediaDevices(this);
+    connect(devices, &QMediaDevices::audioOutputsChanged, this, [this] {
+        const QAudioDevice d = QMediaDevices::defaultAudioOutput();
+        audio_->setDevice(d);
+        for (auto& [id, ap] : audioPlayers_) ap.out->setDevice(d);
+    });
     if (!qEnvironmentVariableIsSet("CUTLINE_NO_UPDATE_CHECK"))
         QTimer::singleShot(4000, this, [this] { updater_->check(false); });
 }
@@ -89,22 +123,31 @@ QWidget* MainWindow::buildInspector() {
     v->addWidget(lblSegment_);
     lblSpeed_ = new QLabel;
     v->addWidget(lblSpeed_);
+    // Tempo: Schieberegler (langsam feine, schnell größere Schritte) + Feld für jede beliebige Zahl
     auto* row = new QHBoxLayout;
-    for (double s : {0.5, 1.0, 2.0, 4.0}) {
-        auto* b = new QPushButton(QString("%1×").arg(s));
-        b->setFocusPolicy(Qt::NoFocus);
-        connect(b, &QPushButton::clicked, this, [this, s] { setSpeed(s); });
-        row->addWidget(b);
-    }
-    v->addLayout(row);
+    row->setSpacing(8);
+    sliderSpeed_ = new QSlider(Qt::Horizontal);
+    sliderSpeed_->setRange(0, int(speedSteps().size()) - 1);
+    sliderSpeed_->setPageStep(1);
+    sliderSpeed_->setFocusPolicy(Qt::NoFocus);
+    connect(sliderSpeed_, &QSlider::valueChanged, this, [this](int i) {
+        const double sp = speedSteps()[std::clamp<size_t>(i, 0, speedSteps().size() - 1)];
+        QSignalBlocker b(spSpeed_);
+        spSpeed_->setValue(sp);
+        if (!sliderSpeed_->isSliderDown()) setSpeed(sp);  // Klick/Taste sofort, Ziehen erst beim Loslassen
+    });
+    connect(sliderSpeed_, &QSlider::sliderReleased, this, [this] { setSpeed(spSpeed_->value()); });
+    row->addWidget(sliderSpeed_, 1);
     spSpeed_ = new QDoubleSpinBox;
+    spSpeed_->setFixedWidth(78);
     spSpeed_->setRange(0.1, 16);
     spSpeed_->setSingleStep(0.25);
     spSpeed_->setDecimals(2);
     spSpeed_->setSuffix(" ×");
     spSpeed_->setButtonSymbols(QAbstractSpinBox::NoButtons);
     connect(spSpeed_, &QDoubleSpinBox::editingFinished, this, [this] { setSpeed(spSpeed_->value()); });
-    v->addWidget(spSpeed_);
+    row->addWidget(spSpeed_);
+    v->addLayout(row);
     lblPieceVol_ = new QLabel;
     v->addWidget(lblPieceVol_);
     sliderPieceVol_ = new QSlider(Qt::Horizontal);
@@ -242,17 +285,6 @@ void MainWindow::buildUi() {
         seek(scrubTarget_);
     });
     lblTime_ = new QLabel("00:00.0 / 00:00.0");
-    lblVolIcon_ = new QLabel;
-    auto* vol = new QSlider(Qt::Horizontal);
-    vol->setFixedWidth(90);
-    vol->setRange(0, 100);
-    vol->setValue(int(masterVol_ * 100));
-    vol->setFocusPolicy(Qt::NoFocus);
-    connect(vol, &QSlider::valueChanged, this, [this](int v) {
-        masterVol_ = v / 100.0;
-        applyPlayerVolume();
-        updateAudio(false);
-    });
     btnAddMedia_ = mk("add_media", "add_media_tip", Ic::AddVideo);
     connect(btnAddMedia_, &QPushButton::clicked, this, &MainWindow::addMedia);
     btnEdit_ = mk("edit", nullptr, Ic::Edit, nullptr, " (E)");
@@ -263,8 +295,6 @@ void MainWindow::buildUi() {
     bar->addWidget(btnPlay_);
     bar->addWidget(slider_, 1);
     bar->addWidget(lblTime_);
-    bar->addWidget(lblVolIcon_);
-    bar->addWidget(vol);
     bar->addWidget(btnAddMedia_);
     bar->addWidget(btnEdit_);
     bar->addWidget(bSet);
@@ -374,7 +404,6 @@ void MainWindow::applyTheme() {
         const bool onBar = th.xp && topbar_->isAncestorOf(s.b);  // XP-Taskleiste: weiße Symbole
         static_cast<QPushButton*>(s.b)->setIcon(makeIcon(s.icon, s.onAccent || onBar ? th.accentText : th.text));
     }
-    lblVolIcon_->setPixmap(makeIcon(Ic::Volume, th.muted).pixmap(20, 20));
     lblHint_->setStyleSheet(th.xp ? QString("color:#FFFFFF;font-size:17px;font-weight:bold;background:transparent")
                                   : QString("color:%1;font-size:17px;background:transparent").arg(th.muted.name()));
     // XP: Taskleiste mit Innenabstand, sonst bündig
@@ -1018,6 +1047,7 @@ void MainWindow::refreshInspector() {
         const Piece& p = pr_.pieces[selPiece_];
         insp_->setCurrentIndex(1);
         { QSignalBlocker b(spSpeed_); spSpeed_->setValue(p.speed); }
+        { QSignalBlocker b(sliderSpeed_); sliderSpeed_->setValue(nearestSpeedStep(p.speed)); }
         { QSignalBlocker b(sliderPieceVol_); sliderPieceVol_->setValue(qRound(p.volume * 100)); }
         lblPieceVol_->setText(T("volume") + QString("  %1 %").arg(qRound(p.volume * 100)));
         lblPiece_->setText(T("source_range").arg(fmtTime(p.start), fmtTime(p.end)) + "\n" +
