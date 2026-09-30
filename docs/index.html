@@ -1,14 +1,13 @@
-﻿<!doctype html>
+<!doctype html>
 <html lang="en" data-theme="dark">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Cutline – simple video editor</title>
-<meta name="description" content="Cutline is a simple, fast video editor. Cut, speed up, blur, add images and music, export. Also a fast, clean video player. Free for Windows, Linux and macOS.">
+<meta name="description" content="Cutline is a simple, fast video editor and a clean video player. Cut, speed up, blur, add images and music, export. Free for Windows, Linux and macOS.">
 <meta name="color-scheme" content="dark light">
 <link rel="icon" href="favicon.ico">
 <script>
-  // Theme vor dem ersten Rendern setzen (kein Aufblitzen)
   (function () {
     var t = null;
     try { t = localStorage.getItem('theme'); } catch (e) {}
@@ -18,146 +17,195 @@
 </script>
 <style>
   :root {
-    --a1:#6d6cff; --a2:#b455f5; --grad:linear-gradient(135deg,var(--a1),var(--a2));
-    --radius:18px; --mono:ui-monospace,SFMono-Regular,"JetBrains Mono",Menlo,Consolas,monospace;
+    --a1:#22d3a0; --a2:#2563eb; --a3:#38bdf8; --grad:linear-gradient(135deg,var(--a1),var(--a2));
+    --radius:20px; --mono:ui-monospace,SFMono-Regular,"JetBrains Mono",Menlo,Consolas,monospace;
     --sans:"Inter",system-ui,-apple-system,"Segoe UI",Roboto,Ubuntu,sans-serif;
   }
   [data-theme="dark"] {
-    --bg:#07080d; --bg2:#0b0d14; --card:#10131c; --card2:#161a26; --line:rgba(255,255,255,.08); --line2:rgba(255,255,255,.14);
-    --text:#eef0f7; --muted:#8c92a7; --label:#a78bfa; --shadow:0 30px 80px -20px rgba(0,0,0,.7);
-    --glow1:rgba(109,108,255,.28); --glow2:rgba(180,85,245,.20); --grid:rgba(255,255,255,.085);
+    --bg:#05080b; --bg2:#0a0f14; --card:rgba(16,22,30,.72); --card-solid:#0f151d; --card2:#16202b; --line:rgba(255,255,255,.08); --line2:rgba(255,255,255,.15);
+    --text:#eef4f7; --muted:#8fa0ad; --label:#3ee0b0; --shadow:0 40px 100px -30px rgba(0,0,0,.85);
+    --orb1:rgba(34,211,160,.30); --orb2:rgba(37,99,235,.40); --orb3:rgba(56,189,248,.20); --grid:rgba(255,255,255,.085);
   }
   [data-theme="light"] {
-    --bg:#f6f6fb; --bg2:#ffffff; --card:#ffffff; --card2:#f0f1f8; --line:rgba(22,26,44,.09); --line2:rgba(22,26,44,.16);
-    --text:#12141d; --muted:#5b6176; --label:#6d4fe0; --shadow:0 30px 70px -25px rgba(60,60,120,.35);
-    --glow1:rgba(109,108,255,.20); --glow2:rgba(180,85,245,.14); --grid:rgba(20,24,50,.10);
+    --bg:#f6fafb; --bg2:#ffffff; --card:rgba(255,255,255,.8); --card-solid:#ffffff; --card2:#eef4f7; --line:rgba(10,40,60,.09); --line2:rgba(10,40,60,.17);
+    --text:#0f1a22; --muted:#56687a; --label:#0f9e76; --shadow:0 40px 90px -35px rgba(20,70,120,.35);
+    --orb1:rgba(34,211,160,.22); --orb2:rgba(37,99,235,.20); --orb3:rgba(56,189,248,.18); --grid:rgba(10,40,60,.10);
   }
   * { box-sizing:border-box; }
   html { scroll-behavior:smooth; scroll-padding-top:80px; }
-  body { margin:0; background:var(--bg); color:var(--text); font:16px/1.65 var(--sans); -webkit-font-smoothing:antialiased; transition:background .3s,color .3s; }
+  body { margin:0; background:var(--bg); color:var(--text); font:16px/1.65 var(--sans); -webkit-font-smoothing:antialiased; overflow-x:hidden; transition:background .3s,color .3s; }
   a { color:inherit; text-decoration:none; }
   img { max-width:100%; display:block; }
   button { font:inherit; color:inherit; cursor:pointer; }
-  .wrap { max-width:1140px; margin:0 auto; padding:0 24px; }
+  .wrap { max-width:1180px; margin:0 auto; padding:0 24px; }
   svg.i { width:1em; height:1em; stroke:currentColor; fill:none; stroke-width:2; stroke-linecap:round; stroke-linejoin:round; flex:none; }
-  .label { font:600 13px/1 var(--mono); letter-spacing:.14em; text-transform:uppercase; color:var(--label); margin:0 0 16px; }
-  .grad-text { background:var(--grad); -webkit-background-clip:text; background-clip:text; color:transparent; }
+  .label { display:inline-flex; align-items:center; gap:8px; font:600 12.5px/1 var(--mono); letter-spacing:.16em; text-transform:uppercase; color:var(--label); margin:0 0 18px; }
+  .label::before { content:""; width:18px; height:2px; background:var(--grad); border-radius:2px; }
+  .grad-text { background:linear-gradient(100deg,var(--a1),var(--a3) 45%,var(--a2)); -webkit-background-clip:text; background-clip:text; color:transparent; }
 
-  /* ---------- Nav ---------- */
-  nav { position:sticky; top:0; z-index:50; backdrop-filter:blur(16px) saturate(1.4); background:color-mix(in srgb,var(--bg) 78%,transparent); border-bottom:1px solid var(--line); }
-  nav .wrap { display:flex; align-items:center; gap:22px; height:66px; }
-  .brand { display:flex; align-items:center; gap:11px; font-weight:750; font-size:19px; letter-spacing:-.01em; }
-  .brand img { width:32px; height:32px; border-radius:9px; }
-  .links { margin-left:auto; display:flex; align-items:center; gap:6px; }
-  .links a.l { padding:8px 13px; border-radius:10px; color:var(--muted); font-size:15px; font-weight:500; transition:.15s; }
-  .links a.l:hover { color:var(--text); background:var(--card2); }
-  .ib, .sel { height:38px; border-radius:11px; border:1px solid var(--line); background:var(--card); color:var(--text); display:inline-grid; place-items:center; transition:.15s; }
-  .ib { width:38px; font-size:18px; } .ib:hover, .sel:hover { border-color:var(--line2); background:var(--card2); }
-  .sel { padding:0 30px 0 12px; font-size:14px; appearance:none; -webkit-appearance:none; background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238c92a7' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E"); background-repeat:no-repeat; background-position:right 10px center; }
-  .theme-ic .sun { display:none; } [data-theme="light"] .theme-ic .sun { display:block; } [data-theme="light"] .theme-ic .moon { display:none; }
-
-  /* ---------- Hero ---------- */
-  .hero { position:relative; padding:96px 0 70px; text-align:center; overflow:hidden; isolation:isolate; }
-  .hero::before { content:""; position:absolute; inset:0; z-index:-2;
-    background:radial-gradient(700px 420px at 20% 0%,var(--glow1),transparent 70%),radial-gradient(700px 420px at 82% 8%,var(--glow2),transparent 70%); }
-  .hero::after { content:""; position:absolute; inset:0; z-index:-1;
+  .aurora { position:fixed; inset:0; z-index:-2; pointer-events:none; overflow:hidden; }
+  .aurora i { position:absolute; width:62vw; height:62vw; border-radius:50%; filter:blur(90px); opacity:.9; animation:drift 26s ease-in-out infinite alternate; }
+  .aurora i:nth-child(1) { background:var(--orb1); left:-18vw; top:-26vw; }
+  .aurora i:nth-child(2) { background:var(--orb2); right:-20vw; top:-12vw; animation-duration:32s; animation-delay:-8s; }
+  .aurora i:nth-child(3) { background:var(--orb3); left:25vw; top:40vh; width:40vw; height:40vw; animation-duration:38s; }
+  @keyframes drift { 0% { transform:translate(0,0) scale(1); } 50% { transform:translate(6vw,4vh) scale(1.08); } 100% { transform:translate(-4vw,8vh) scale(.95); } }
+  .gridbg { position:absolute; inset:0; z-index:-1; pointer-events:none;
     background-image:linear-gradient(var(--grid) 1px,transparent 1px),linear-gradient(90deg,var(--grid) 1px,transparent 1px); background-size:56px 56px;
     -webkit-mask:radial-gradient(85% 75% at 50% 30%,#000 35%,transparent 85%); mask:radial-gradient(85% 75% at 50% 30%,#000 35%,transparent 85%); }
-  .badge { display:inline-flex; align-items:center; gap:9px; padding:6px 14px 6px 8px; border-radius:999px; border:1px solid var(--line2); background:var(--card); font-size:14px; color:var(--muted); }
-  .badge b { background:var(--grad); color:#fff; padding:2px 9px; border-radius:999px; font-size:12px; font-weight:650; }
-  h1 { font-size:clamp(42px,7.4vw,84px); line-height:1.02; letter-spacing:-.04em; margin:26px auto 22px; max-width:900px; font-weight:800; }
-  .lead { max-width:640px; margin:0 auto 38px; color:var(--muted); font-size:clamp(17px,2vw,20px); }
 
-  /* ---------- Download UI ---------- */
-  .dlui { display:flex; gap:12px; justify-content:center; flex-wrap:wrap; position:relative; }
+  nav { position:sticky; top:0; z-index:50; backdrop-filter:blur(18px) saturate(1.5); -webkit-backdrop-filter:blur(18px) saturate(1.5); background:color-mix(in srgb,var(--bg) 70%,transparent); border-bottom:1px solid var(--line); }
+  nav .wrap { display:flex; align-items:center; gap:22px; height:68px; }
+  .brand { display:flex; align-items:center; gap:11px; font-weight:780; font-size:19px; letter-spacing:-.01em; }
+  .brand img { width:34px; height:34px; border-radius:9px; }
+  .links { margin-left:auto; display:flex; align-items:center; gap:4px; }
+  .links a.l { padding:8px 13px; border-radius:10px; color:var(--muted); font-size:15px; font-weight:500; transition:.15s; }
+  .links a.l:hover { color:var(--text); background:var(--card2); }
+  .ib, .sel { height:38px; border-radius:11px; border:1px solid var(--line2); background:var(--card-solid); color:var(--text); display:inline-grid; place-items:center; transition:.15s; }
+  .ib { width:38px; font-size:18px; } .ib:hover, .sel:hover { border-color:var(--a1); }
+  .sel { padding:0 30px 0 12px; font-size:14px; appearance:none; -webkit-appearance:none; background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238fa0ad' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E"); background-repeat:no-repeat; background-position:right 10px center; }
+  .theme-ic .sun { display:none; } [data-theme="light"] .theme-ic .sun { display:block; } [data-theme="light"] .theme-ic .moon { display:none; }
+
+  .hero { position:relative; padding:78px 0 40px; isolation:isolate; }
+  .hero .cols { display:grid; grid-template-columns:1fr 1.08fr; gap:54px; align-items:center; }
+  .badge { display:inline-flex; align-items:center; gap:9px; padding:6px 14px 6px 7px; border-radius:999px; border:1px solid var(--line2); background:var(--card); backdrop-filter:blur(8px); font-size:14px; color:var(--muted); }
+  .badge b { background:var(--grad); color:#fff; padding:2px 10px; border-radius:999px; font-size:12px; font-weight:650; }
+  h1 { font-size:clamp(44px,6.2vw,82px); line-height:.98; letter-spacing:-.045em; margin:24px 0 22px; font-weight:850; }
+  .lead { max-width:560px; margin:0 0 34px; color:var(--muted); font-size:clamp(17px,1.7vw,20px); }
+
+  .stage { position:relative; }
+  .editor { border-radius:18px; padding:8px; background:linear-gradient(160deg,var(--line2),transparent 40%),var(--card-solid); border:1px solid var(--line2);
+    box-shadow:var(--shadow),0 0 140px -40px var(--a2); transform:perspective(1400px) rotateY(-9deg) rotateX(3deg); transition:transform .6s; }
+  .editor:hover { transform:perspective(1400px) rotateY(-3deg) rotateX(1deg); }
+  .editor img { border-radius:11px; width:100%; }
+  .float { position:absolute; display:flex; align-items:center; gap:9px; padding:10px 14px; border-radius:14px; background:var(--card-solid); border:1px solid var(--line2);
+    box-shadow:var(--shadow); font-weight:650; font-size:14px; animation:bob 5s ease-in-out infinite; white-space:nowrap; }
+  .float .dot { width:28px; height:28px; border-radius:9px; display:grid; place-items:center; color:#fff; background:var(--grad); font-size:14px; }
+  .float small { display:block; color:var(--muted); font-weight:500; font-size:12px; }
+  .f1 { left:-26px; top:14%; } .f2 { right:-18px; top:38%; animation-delay:-1.6s; } .f3 { left:12%; bottom:-22px; animation-delay:-3.2s; }
+  @keyframes bob { 0%,100% { transform:translateY(0); } 50% { transform:translateY(-10px); } }
+  .progress { width:120px; height:6px; border-radius:4px; background:var(--card2); overflow:hidden; }
+  .progress i { display:block; height:100%; background:var(--grad); animation:prog 4s ease-in-out infinite; }
+  @keyframes prog { 0% { width:0; } 80%,100% { width:100%; } }
+
+  .dlui { display:flex; gap:12px; flex-wrap:wrap; position:relative; }
   .dd { position:relative; }
-  .btn { display:inline-flex; align-items:center; gap:11px; height:54px; padding:0 22px; border-radius:15px; font-weight:650; font-size:17px; border:1px solid var(--line2); background:var(--card); transition:transform .15s,box-shadow .2s,border-color .15s,background .15s; }
-  .btn:hover { transform:translateY(-2px); }
-  .btn.pri { background:var(--grad); border-color:transparent; color:#fff; box-shadow:0 12px 34px -8px var(--a1); }
-  .btn.pri:hover { box-shadow:0 18px 44px -8px var(--a1); }
+  .btn { display:inline-flex; align-items:center; gap:11px; height:56px; padding:0 24px; border-radius:16px; font-weight:680; font-size:17px; border:1px solid var(--line2); background:var(--card-solid); transition:transform .15s,box-shadow .2s,border-color .15s; }
+  .btn:hover { transform:translateY(-2px); border-color:var(--a1); }
+  .btn.pri { position:relative; background:var(--grad); border-color:transparent; color:#fff; box-shadow:0 14px 38px -10px var(--a2); overflow:hidden; }
+  .btn.pri::after { content:""; position:absolute; top:0; left:-60%; width:40%; height:100%; background:linear-gradient(100deg,transparent,rgba(255,255,255,.35),transparent); transform:skewX(-20deg); animation:shine 4.5s infinite; }
+  @keyframes shine { 0%,70% { left:-60%; } 100% { left:130%; } }
   .btn .i { font-size:19px; } .btn .chev { font-size:15px; opacity:.85; transition:transform .2s; }
   .btn[aria-expanded="true"] .chev { transform:rotate(180deg); }
-  .menu { position:absolute; top:calc(100% + 10px); left:0; z-index:40; min-width:300px; text-align:left; background:var(--card); border:1px solid var(--line2); border-radius:16px; box-shadow:var(--shadow); padding:8px; opacity:0; transform:translateY(-6px) scale(.98); pointer-events:none; transition:.16s; }
+  .menu { position:absolute; top:calc(100% + 10px); left:0; z-index:40; min-width:300px; text-align:left; background:var(--card-solid); border:1px solid var(--line2); border-radius:18px; box-shadow:var(--shadow); padding:8px; opacity:0; transform:translateY(-6px) scale(.98); pointer-events:none; transition:.16s; }
   .menu.open { opacity:1; transform:none; pointer-events:auto; }
-  .menu.wide { width:min(440px,92vw); right:auto; }
+  .menu.wide { width:min(440px,92vw); }
   .tabs { display:grid; grid-template-columns:repeat(3,1fr); gap:4px; padding:4px; margin-bottom:6px; background:var(--bg2); border-radius:12px; border:1px solid var(--line); }
   .tabs button { border:0; background:transparent; padding:9px 6px; border-radius:9px; font-weight:600; font-size:15px; color:var(--muted); transition:.15s; }
   .tabs button:hover { color:var(--text); }
   .tabs button.on { background:var(--card2); color:var(--text); box-shadow:0 0 0 1px var(--line2) inset; }
   .item { display:flex; align-items:center; gap:14px; padding:12px 14px; border-radius:11px; transition:background .12s; }
-  .item:hover, .item:focus-visible { background:var(--card2); outline:none; }
+  .item:hover { background:var(--card2); }
   .item .t { flex:1; min-width:0; }
   .item .t b { display:block; font-size:16px; font-weight:650; line-height:1.3; }
   .item .t small { display:block; color:var(--muted); font-size:13.5px; line-height:1.4; }
   .item .sz { font:13px var(--mono); color:var(--muted); white-space:nowrap; }
-  .vline { margin-top:22px; color:var(--muted); font-size:15px; }
+  .vline { margin-top:20px; color:var(--muted); font-size:15px; }
   .vline a { color:var(--label); text-decoration:underline; text-underline-offset:3px; }
-  .chips { display:flex; gap:9px; justify-content:center; flex-wrap:wrap; margin-top:20px; }
-  .chip { font:13px var(--mono); padding:6px 14px; border-radius:999px; border:1px solid var(--line2); background:transparent; color:var(--text); transition:.15s; }
-  .chip:hover { border-color:var(--a1); background:var(--card); }
+  .chips { display:flex; gap:8px; flex-wrap:wrap; margin-top:16px; }
+  .chip { font:13px var(--mono); padding:6px 13px; border-radius:999px; border:1px solid var(--line2); background:var(--card); color:var(--text); transition:.15s; }
+  .chip:hover { border-color:var(--a1); }
 
-  /* ---------- Window frame ---------- */
-  .frame { position:relative; margin:64px auto 0; max-width:1060px; border-radius:20px; background:var(--card); border:1px solid var(--line2); box-shadow:var(--shadow), 0 0 120px -30px var(--a1); overflow:hidden; }
-  .frame .bar { display:flex; gap:7px; padding:12px 16px; border-bottom:1px solid var(--line); background:var(--bg2); }
-  .frame .bar i { width:11px; height:11px; border-radius:50%; background:var(--line2); }
-  .frame .bar i:nth-child(1) { background:#ff5f57 } .frame .bar i:nth-child(2) { background:#febc2e } .frame .bar i:nth-child(3) { background:#28c840 }
-  .frame img { width:100%; height:auto; transition:opacity .25s; }
+  .stats { display:grid; grid-template-columns:repeat(4,1fr); gap:1px; margin:90px 0 0; border-radius:var(--radius); overflow:hidden; border:1px solid var(--line2); background:var(--line2); }
+  .stat { padding:26px 24px; background:var(--card-solid); }
+  .stat b { display:block; font-size:clamp(28px,3.4vw,40px); font-weight:820; letter-spacing:-.03em; line-height:1.1; }
+  .stat span { color:var(--muted); font-size:14.5px; }
 
-  /* ---------- Sections ---------- */
-  section { padding:100px 0; }
-  h2 { font-size:clamp(32px,4.8vw,54px); letter-spacing:-.03em; line-height:1.08; margin:0 0 16px; font-weight:800; max-width:760px; }
-  .sub { color:var(--muted); font-size:19px; max-width:620px; margin:0 0 52px; }
+  section { padding:110px 0; position:relative; }
+  h2 { font-size:clamp(34px,4.9vw,58px); letter-spacing:-.035em; line-height:1.04; margin:0 0 16px; font-weight:840; max-width:800px; }
+  .sub { color:var(--muted); font-size:19px; max-width:640px; margin:0 0 54px; }
   .center { text-align:center; } .center h2, .center .sub { margin-left:auto; margin-right:auto; }
 
+  .gcard { position:relative; border-radius:var(--radius); background:var(--card); backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px); padding:30px; overflow:hidden; transition:transform .25s; }
+  .gcard::before { content:""; position:absolute; inset:0; border-radius:inherit; padding:1px; pointer-events:none;
+    background:linear-gradient(150deg,var(--line2),transparent 40%,transparent 60%,var(--line2));
+    -webkit-mask:linear-gradient(#000 0 0) content-box,linear-gradient(#000 0 0); -webkit-mask-composite:xor; mask-composite:exclude; }
+  .gcard:hover { transform:translateY(-3px); }
+  .gcard:hover::before { background:linear-gradient(150deg,var(--a1),transparent 45%,transparent 55%,var(--a2)); }
+  .gcard h3 { margin:0 0 6px; font-size:21px; letter-spacing:-.01em; }
+  .gcard p { margin:0; color:var(--muted); font-size:15.5px; }
+  .ic { width:46px; height:46px; border-radius:13px; display:grid; place-items:center; margin-bottom:18px; font-size:22px; color:#fff; background:var(--grad); box-shadow:0 10px 26px -10px var(--a2); }
   .steps { display:grid; grid-template-columns:repeat(3,1fr); gap:18px; }
-  .step { position:relative; padding:32px; border-radius:var(--radius); background:var(--card); border:1px solid var(--line); overflow:hidden; }
-  .step .n { font:700 56px/1 var(--mono); background:var(--grad); -webkit-background-clip:text; background-clip:text; color:transparent; opacity:.9; }
-  .step h3 { margin:18px 0 8px; font-size:22px; letter-spacing:-.01em; }
-  .step p { margin:0; color:var(--muted); }
+  .steps .n { font:800 14px var(--mono); color:var(--label); letter-spacing:.1em; }
+  .steps h3 { margin:10px 0 8px; font-size:23px; }
 
-  /* Bento */
   .bento { display:grid; grid-template-columns:repeat(6,1fr); gap:16px; }
-  .cell { position:relative; padding:28px; border-radius:var(--radius); background:var(--card); border:1px solid var(--line); overflow:hidden; transition:border-color .2s,transform .2s; }
-  .cell:hover { border-color:var(--line2); transform:translateY(-2px); }
-  .cell h3 { margin:0 0 6px; font-size:20px; letter-spacing:-.01em; }
-  .cell p { margin:0; color:var(--muted); font-size:15.5px; }
-  .c2 { grid-column:span 2; } .c6 { grid-column:span 6; } .c3 { grid-column:span 3; } .c4 { grid-column:span 4; }
+  .c2 { grid-column:span 2; } .c3 { grid-column:span 3; } .c4 { grid-column:span 4; } .c6 { grid-column:span 6; }
   .demo { margin-top:22px; }
-  .blurdemo { height:130px; border-radius:14px; position:relative; overflow:hidden; background:conic-gradient(from 30deg at 40% 60%,#6d6cff,#b455f5,#ff6ea8,#ffb14d,#4ade9b,#6d6cff); }
-  .blurdemo::after { content:"Blur"; position:absolute; left:32%; top:26%; width:36%; height:48%; border-radius:10px; backdrop-filter:blur(12px); -webkit-backdrop-filter:blur(12px); border:2px solid rgba(255,255,255,.8); display:grid; place-items:center; color:#fff; font:600 13px var(--mono); text-shadow:0 1px 6px rgba(0,0,0,.4); }
+  .blurdemo { position:relative; height:190px; border-radius:14px; overflow:hidden; background:url(img/photo-bird.webp) 45% 35%/cover; }
+  .blurdemo .box { position:absolute; left:34%; top:18%; width:30%; height:58%; border-radius:12px; backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
+    border:2px solid rgba(255,255,255,.9); animation:scan 6s ease-in-out infinite; }
+  @keyframes scan { 0%,100% { left:30%; } 50% { left:46%; } }
   .pills { display:flex; flex-wrap:wrap; gap:8px; }
   .pill { padding:6px 13px; border-radius:999px; border:1px solid var(--line2); font-size:14px; background:var(--bg2); }
   .pill.on { background:var(--grad); color:#fff; border-color:transparent; }
-  .thumbs { display:flex; gap:4px; height:64px; border-radius:12px; overflow:hidden; border:1px solid var(--line); }
-  .thumbs i { flex:1; }
-  .kbd { display:inline-grid; place-items:center; min-width:34px; height:34px; padding:0 9px; border-radius:9px; border:1px solid var(--line2); border-bottom-width:3px; background:var(--bg2); font:600 14px var(--mono); }
-  .kbds { display:flex; gap:8px; flex-wrap:wrap; }
+  .thumbs { display:flex; gap:3px; height:64px; border-radius:12px; overflow:hidden; border:1px solid var(--line); position:relative; }
+  .thumbs i { flex:1; background-size:cover; background-position:center; }
+  .thumbs .ph { position:absolute; top:0; bottom:0; width:2px; background:#ff5d5d; animation:ph 5s linear infinite; }
+  @keyframes ph { 0% { left:4%; } 100% { left:96%; } }
+  .kbd { display:inline-grid; place-items:center; min-width:38px; height:38px; padding:0 10px; border-radius:10px; border:1px solid var(--line2); border-bottom-width:4px; background:var(--bg2); font:700 14px var(--mono); }
+  .kbds { display:flex; gap:7px; flex-wrap:wrap; }
   .rows { display:grid; gap:8px; }
   .rows div { display:flex; justify-content:space-between; padding:10px 14px; border-radius:11px; background:var(--bg2); border:1px solid var(--line); font-size:14.5px; }
   .rows span { color:var(--muted); } .rows b { font-family:var(--mono); font-weight:600; }
-  .swatches { display:flex; gap:10px; }
-  .swatches i { width:34px; height:34px; border-radius:50%; border:2px solid var(--line2); }
+  .pair { display:flex; align-items:center; gap:14px; margin-bottom:16px; }
+  .pair img { width:54px; height:54px; } .pair .arrow { color:var(--muted); font-size:22px; }
 
-  /* Theme gallery */
-  .gallery { display:flex; justify-content:center; gap:10px; flex-wrap:wrap; margin-bottom:34px; }
-  .gallery button { display:inline-flex; align-items:center; gap:9px; padding:9px 16px; border-radius:999px; border:1px solid var(--line2); background:var(--card); font-size:14.5px; font-weight:550; transition:.15s; }
+  .qview { position:relative; max-width:1000px; margin:0 auto; border-radius:22px; overflow:hidden; border:1px solid var(--line2); box-shadow:var(--shadow),0 0 120px -40px var(--a2); aspect-ratio:16/9; background:#000; }
+  .qview canvas { position:absolute; inset:0; width:100%; height:100%; display:block; }
+  .qview .arrow { position:absolute; top:50%; transform:translateY(-50%); width:52px; height:52px; border-radius:50%; border:1px solid rgba(255,255,255,.25);
+    background:rgba(0,0,0,.45); backdrop-filter:blur(8px); color:#fff; display:grid; place-items:center; font-size:22px; transition:background .15s, transform .15s; }
+  .qview .arrow:hover { background:rgba(0,0,0,.7); transform:translateY(-50%) scale(1.06); }
+  .qview .arrow.l { left:16px; } .qview .arrow.r { right:16px; }
+  .qview .tag { position:absolute; top:16px; right:16px; padding:6px 13px; border-radius:999px; background:rgba(0,0,0,.6); color:#fff; font:700 13px var(--mono); backdrop-filter:blur(6px); }
+  .qview .dots { position:absolute; bottom:16px; left:50%; transform:translateX(-50%); display:flex; gap:8px; }
+  .qview .dots button { width:9px; height:9px; padding:0; border-radius:50%; border:0; background:rgba(255,255,255,.45); }
+  .qview .dots button.on { background:#fff; width:22px; border-radius:5px; }
+  .qview .credit { position:absolute; bottom:12px; left:16px; color:rgba(255,255,255,.7); font-size:11.5px; text-shadow:0 1px 4px rgba(0,0,0,.6); }
+  .resbar { display:flex; justify-content:center; gap:8px; flex-wrap:wrap; margin:0 0 26px; }
+  .resbar button { padding:9px 16px; border-radius:999px; border:1px solid var(--line2); background:var(--card-solid); font:600 14px var(--mono); transition:.15s; }
+  .resbar button:hover { border-color:var(--a1); }
+  .resbar button.on { background:var(--grad); color:#fff; border-color:transparent; }
+  .resinfo { text-align:center; color:var(--muted); margin-top:18px; font-size:15px; }
+  .resinfo b { color:var(--text); }
+
+  .gallery { display:flex; justify-content:center; gap:10px; flex-wrap:wrap; margin-bottom:30px; }
+  .gallery button { display:inline-flex; align-items:center; gap:9px; padding:10px 17px; border-radius:999px; border:1px solid var(--line2); background:var(--card-solid); font-size:14.5px; font-weight:600; transition:.15s; }
   .gallery button i { width:14px; height:14px; border-radius:50%; }
   .gallery button:hover { border-color:var(--a1); }
   .gallery button.on { background:var(--grad); color:#fff; border-color:transparent; }
-  .gallery button.on i { box-shadow:0 0 0 2px rgba(255,255,255,.6); }
+  .frame { position:relative; margin:0 auto; max-width:1060px; border-radius:20px; background:var(--card-solid); border:1px solid var(--line2); box-shadow:var(--shadow),0 0 120px -40px var(--a2); overflow:hidden; }
+  .frame .bar { display:flex; gap:7px; padding:12px 16px; border-bottom:1px solid var(--line); background:var(--bg2); }
+  .frame .bar i { width:11px; height:11px; border-radius:50%; }
+  .frame .bar i:nth-child(1) { background:#ff5f57 } .frame .bar i:nth-child(2) { background:#febc2e } .frame .bar i:nth-child(3) { background:#28c840 }
+  .frame img { width:100%; height:auto; transition:opacity .25s; }
 
-  /* Download section */
-  #download { background:linear-gradient(180deg,transparent,var(--bg2) 30%,var(--bg2) 70%,transparent); }
-  .dlpanel { max-width:640px; margin:0 auto; padding:12px; border-radius:22px; background:var(--card); border:1px solid var(--line2); box-shadow:var(--shadow); }
+  .dlpanel { max-width:660px; margin:0 auto; padding:12px; border-radius:24px; background:var(--card-solid); border:1px solid var(--line2); box-shadow:var(--shadow); }
   .dlpanel .item { padding:16px 18px; }
-  .dlpanel .item .dlic { width:42px; height:42px; border-radius:12px; display:grid; place-items:center; background:var(--card2); border:1px solid var(--line); font-size:20px; }
-  .cmd { display:flex; align-items:center; gap:10px; margin:0 18px 12px; padding:9px 12px; border-radius:10px; background:var(--bg2); border:1px solid var(--line); font:13px var(--mono); color:var(--muted); }
-  .cmd code { flex:1; overflow-x:auto; white-space:nowrap; color:var(--text); }
+  .dlpanel .item .dlic { width:44px; height:44px; border-radius:13px; display:grid; place-items:center; background:var(--card2); border:1px solid var(--line); font-size:20px; }
+  .cmd { display:flex; align-items:center; gap:10px; margin:0 18px 12px; padding:9px 12px; border-radius:10px; background:var(--bg2); border:1px solid var(--line); font:13px var(--mono); }
+  .cmd code { flex:1; overflow-x:auto; white-space:nowrap; }
   .cmd button { border:0; background:transparent; color:var(--muted); padding:2px 6px; border-radius:6px; }
   .cmd button:hover { color:var(--text); background:var(--card2); }
-  .note { text-align:center; color:var(--muted); font-size:15px; margin:26px auto 0; max-width:620px; }
+  .note { text-align:center; color:var(--muted); font-size:15px; margin:26px auto 0; max-width:660px; }
 
-  details { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:20px 24px; margin-bottom:12px; transition:border-color .2s; }
+  .sister { display:flex; align-items:center; gap:22px; padding:30px; border-radius:24px; border:1px solid var(--line2);
+    background:linear-gradient(135deg,color-mix(in srgb,#ff5f6d 16%,var(--card-solid)),color-mix(in srgb,#8b5cf6 16%,var(--card-solid))); }
+  .sister img { width:66px; height:66px; }
+  .sister h3 { margin:0 0 4px; font-size:23px; }
+  .sister p { margin:0; color:var(--muted); }
+  .sister .btn { margin-left:auto; height:48px; font-size:15px; background:linear-gradient(135deg,#ff5f6d,#8b5cf6); color:#fff; border:0; }
+
+  details { background:var(--card); backdrop-filter:blur(8px); border:1px solid var(--line); border-radius:16px; padding:20px 24px; margin-bottom:12px; transition:border-color .2s; }
   details[open] { border-color:var(--line2); }
   summary { cursor:pointer; font-weight:650; font-size:17px; list-style:none; display:flex; justify-content:space-between; gap:12px; }
   summary::-webkit-details-marker { display:none; }
@@ -165,24 +213,35 @@
   details[open] summary::after { transform:rotate(45deg); }
   details p { color:var(--muted); margin:12px 0 0; }
 
-  footer { border-top:1px solid var(--line); padding:38px 0 64px; color:var(--muted); font-size:15px; }
+  .cta { text-align:center; padding:70px 30px; border-radius:30px; position:relative; overflow:hidden; border:1px solid var(--line2);
+    background:radial-gradient(600px 300px at 20% 0%,var(--orb1),transparent 70%),radial-gradient(600px 300px at 80% 100%,var(--orb2),transparent 70%),var(--card-solid); }
+  .cta h2 { margin:0 auto 14px; }
+  .cta .dlui { justify-content:center; }
+
+  footer { border-top:1px solid var(--line); padding:40px 0 64px; color:var(--muted); font-size:15px; }
   footer .wrap { display:flex; gap:20px; flex-wrap:wrap; align-items:center; justify-content:space-between; }
   footer a:hover { color:var(--text); }
 
-  .reveal { opacity:0; transform:translateY(18px); transition:opacity .7s ease,transform .7s ease; }
+  .reveal { opacity:0; transform:translateY(22px); transition:opacity .8s cubic-bezier(.2,.7,.2,1),transform .8s cubic-bezier(.2,.7,.2,1); }
   .reveal.in { opacity:1; transform:none; }
-  @media (prefers-reduced-motion:reduce) { .reveal { opacity:1; transform:none; transition:none; } html { scroll-behavior:auto; } }
-
-  @media (max-width:900px) {
+  @media (prefers-reduced-motion:reduce) {
+    .reveal { opacity:1; transform:none; transition:none; } .aurora i, .float, .progress i, .blurdemo .box, .thumbs .ph, .btn.pri::after { animation:none; }
+    html { scroll-behavior:auto; }
+  }
+  @media (max-width:960px) {
+    .hero .cols { grid-template-columns:1fr; gap:60px; }
+    .editor { transform:none; } .f1 { left:6px; } .f2 { right:6px; }
+    .stats { grid-template-columns:repeat(2,1fr); }
     .steps { grid-template-columns:1fr; }
     .bento { grid-template-columns:repeat(2,1fr); } .c2,.c3,.c4,.c6 { grid-column:span 2; }
     .links a.l { display:none; }
-    .hero { padding-top:64px; }
+    .sister { flex-direction:column; text-align:center; } .sister .btn { margin:0; }
   }
-  @media (max-width:520px) { .wrap { padding:0 18px; } .btn { width:100%; justify-content:center; } .dd { width:100%; } .menu { left:0; right:0; min-width:0; width:100% !important; } section { padding:72px 0; } }
+  @media (max-width:520px) { .wrap { padding:0 18px; } .btn { width:100%; justify-content:center; } .dd { width:100%; } .menu { left:0; right:0; min-width:0; width:100% !important; } section { padding:80px 0; } .float { display:none; } }
 </style>
 </head>
 <body>
+<div class="aurora" aria-hidden="true"><i></i><i></i><i></i></div>
 
 <nav>
   <div class="wrap">
@@ -192,7 +251,7 @@
       <a class="l" href="#features" data-i18n="nav_features">Features</a>
       <a class="l" href="#themes" data-i18n="nav_themes">Themes</a>
       <a class="l" href="#download" data-i18n="nav_download">Download</a>
-      <a class="l" id="gh-link" href="#">GitHub</a>
+      <a class="l" href="https://github.com/erqf1/cutline">GitHub</a>
       <select class="sel" id="lang" aria-label="Language">
         <option value="en">English</option>
         <option value="de">Deutsch</option>
@@ -206,44 +265,56 @@
 </nav>
 
 <header class="hero" id="top">
+  <div class="gridbg"></div>
   <div class="wrap">
-    <span class="badge"><b data-i18n="badge_new">Free</b><span data-i18n="badge_t">Windows · Linux · macOS</span></span>
-    <h1><span data-i18n="h1a">Video editing that</span><br><span class="grad-text" data-i18n="h1b">gets out of your way.</span></h1>
-    <p class="lead" data-i18n="lead">Cutline is a simple video editor. Open a clip, cut it, blur what needs hiding, add music, export. No projects, no import, no clutter – just the tools you actually use. And when you don't feel like editing, it's a fast, clean video player too.</p>
-
-    <div class="dlui">
-      <div class="dd" id="dd-main">
-        <a class="btn pri" id="main-btn" href="#download" aria-haspopup="true" aria-expanded="false">
-          <svg class="i" viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M4 20h16"/></svg>
-          <span id="main-label">Download</span>
-          <svg class="i chev" viewBox="0 0 24 24" id="main-chev"><path d="M6 9l6 6 6-6"/></svg>
-        </a>
-        <div class="menu" id="main-menu" role="menu"></div>
-      </div>
-      <div class="dd" id="dd-other">
-        <button class="btn" id="other-btn" aria-haspopup="true" aria-expanded="false">
-          <span data-i18n="other">Other systems</span>
-          <svg class="i chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
-        </button>
-        <div class="menu wide" id="other-menu" role="menu">
-          <div class="tabs" id="other-tabs"></div>
-          <div id="other-list"></div>
+    <div class="cols">
+      <div>
+        <span class="badge reveal"><b data-i18n="badge_new">Free</b><span data-i18n="badge_t">Windows · Linux · macOS</span></span>
+        <h1 class="reveal"><span data-i18n="h1a">Video editing that</span><br><span class="grad-text" data-i18n="h1b">gets out of your way.</span></h1>
+        <p class="lead reveal" data-i18n="lead">Cutline is a simple video editor. Open a clip, cut it, blur what needs hiding, add music, export. No projects, no import, no clutter – and when you don't feel like editing, it's a fast, clean video player too.</p>
+        <div class="dlui reveal">
+          <div class="dd">
+            <a class="btn pri" id="main-btn" href="#download" aria-haspopup="true" aria-expanded="false">
+              <svg class="i" viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M4 20h16"/></svg>
+              <span id="main-label">Download</span>
+              <svg class="i chev" viewBox="0 0 24 24" id="main-chev"><path d="M6 9l6 6 6-6"/></svg>
+            </a>
+            <div class="menu" id="main-menu" role="menu"></div>
+          </div>
+          <div class="dd">
+            <button class="btn" id="other-btn" aria-haspopup="true" aria-expanded="false">
+              <span data-i18n="other">Other systems</span>
+              <svg class="i chev" viewBox="0 0 24 24"><path d="M6 9l6 6 6-6"/></svg>
+            </button>
+            <div class="menu wide" id="other-menu" role="menu">
+              <div class="tabs" id="other-tabs"></div>
+              <div id="other-list"></div>
+            </div>
+          </div>
+        </div>
+        <div class="vline reveal"><span data-i18n="version">Version</span> <b id="ver">1.1.0</b> · <a href="https://github.com/erqf1/cutline/releases"><span data-i18n="all_dl">all downloads on GitHub</span></a></div>
+        <div class="chips reveal">
+          <button class="chip" data-tab="windows">Windows</button>
+          <button class="chip" data-tab="macos">macOS</button>
+          <button class="chip" data-tab="linux">.deb</button>
+          <button class="chip" data-tab="linux">pacman</button>
+          <button class="chip" data-tab="linux">tar.gz</button>
         </div>
       </div>
-    </div>
-    <div class="vline"><span data-i18n="version">Version</span> <b id="ver">1.0.0</b> · <a id="all-dl" href="#"><span data-i18n="all_dl">all downloads on GitHub</span></a></div>
-    <div class="chips">
-      <button class="chip" data-tab="windows">Windows</button>
-      <button class="chip" data-tab="macos">macOS</button>
-      <button class="chip" data-tab="linux">Linux</button>
-      <button class="chip" data-tab="linux">.deb</button>
-      <button class="chip" data-tab="linux">pacman</button>
-      <button class="chip" data-tab="linux">tar.gz</button>
+
+      <div class="stage reveal">
+        <div class="editor"><img src="img/theme-mint.webp" alt="Cutline editing a video: timeline with thumbnails, blur area and speed"></div>
+        <div class="float f1"><span class="dot">✂</span><span><span data-i18n="fl1">Split at 0:42</span><small data-i18n="fl1s">press S</small></span></div>
+        <div class="float f2"><span class="dot">▦</span><span><span data-i18n="fl2">Area blurred</span><small data-i18n="fl2s">live in the preview</small></span></div>
+        <div class="float f3"><span class="dot">↑</span><span><span data-i18n="fl3">Exporting 1080p</span><small><span class="progress" style="display:inline-block;vertical-align:middle"><i></i></span></small></span></div>
+      </div>
     </div>
 
-    <div class="frame reveal">
-      <div class="bar"><i></i><i></i><i></i></div>
-      <img src="img/theme-mint.webp" alt="Cutline editing a video: timeline with thumbnails, blur area, speed and export">
+    <div class="stats reveal">
+      <div class="stat"><b class="grad-text">0 s</b><span data-i18n="s1">import – it just plays</span></div>
+      <div class="stat"><b class="grad-text">1 key</b><span data-i18n="s2">per action, no menus to dig through</span></div>
+      <div class="stat"><b class="grad-text">12</b><span data-i18n="s3">languages, 7 themes</span></div>
+      <div class="stat"><b class="grad-text">GPU</b><span data-i18n="s4">accelerated export</span></div>
     </div>
   </div>
 </header>
@@ -254,9 +325,9 @@
     <h2 class="reveal" data-i18n="how_h">Three steps. That's the whole app.</h2>
     <p class="sub reveal" data-i18n="how_s">No accounts, no cloud, no learning curve. Everything happens on your computer.</p>
     <div class="steps">
-      <div class="step reveal"><div class="n">01</div><h3 data-i18n="st1_h">Open</h3><p data-i18n="st1_p">Drag a video into the window. It plays instantly – no import, no project setup.</p></div>
-      <div class="step reveal"><div class="n">02</div><h3 data-i18n="st2_h">Edit</h3><p data-i18n="st2_p">Press E for the timeline. Split, trim, change speed, blur a face, add a logo or some music.</p></div>
-      <div class="step reveal"><div class="n">03</div><h3 data-i18n="st3_h">Export</h3><p data-i18n="st3_p">Choose resolution, frame rate and quality. One click, and your new video is ready.</p></div>
+      <div class="gcard reveal"><div class="ic"><svg class="i" viewBox="0 0 24 24"><path d="M3 7a2 2 0 012-2h4l2 2h8a2 2 0 012 2v8a2 2 0 01-2 2H5a2 2 0 01-2-2z"/></svg></div><span class="n">01</span><h3 data-i18n="st1_h">Open</h3><p data-i18n="st1_p">Drag a video into the window. It plays instantly – no import, no project setup.</p></div>
+      <div class="gcard reveal"><div class="ic"><svg class="i" viewBox="0 0 24 24"><circle cx="6" cy="18" r="3"/><circle cx="18" cy="18" r="3"/><path d="M8 16L19 4M16 16L5 4"/></svg></div><span class="n">02</span><h3 data-i18n="st2_h">Edit</h3><p data-i18n="st2_p">Press E for the timeline. Split, trim, change speed, blur a face, add a logo or some music.</p></div>
+      <div class="gcard reveal"><div class="ic"><svg class="i" viewBox="0 0 24 24"><path d="M12 15V3M7 8l5-5 5 5M4 15v5h16v-5"/></svg></div><span class="n">03</span><h3 data-i18n="st3_h">Export</h3><p data-i18n="st3_p">Choose resolution, frame rate and quality. One click, and your new video is ready.</p></div>
     </div>
   </div>
 </section>
@@ -267,63 +338,82 @@
     <h2 class="reveal" data-i18n="f_h">Everything you need. Nothing you don't.</h2>
     <p class="sub reveal" data-i18n="f_s">A short list of things that are done properly.</p>
     <div class="bento">
-      <div class="cell c4 reveal">
+      <div class="gcard c4 reveal">
         <h3 data-i18n="b1_h">Real blur, live in the preview</h3>
         <p data-i18n="b1_p">Hide faces, number plates or text. Drag the area, resize it, set how long it stays – and see the actual blur while you edit, not just a box.</p>
-        <div class="demo blurdemo"></div>
+        <div class="demo blurdemo"><div class="box"></div></div>
       </div>
-      <div class="cell c2 reveal">
+      <div class="gcard c2 reveal">
         <h3 data-i18n="b2_h">Speed per segment</h3>
         <p data-i18n="b2_p">Slow down or speed up any part, from 0.1× to 16×.</p>
         <div class="demo pills"><span class="pill">0.5×</span><span class="pill">1×</span><span class="pill on">2×</span><span class="pill">4×</span><span class="pill">8×</span></div>
       </div>
-      <div class="cell c2 reveal">
+      <div class="gcard c2 reveal">
         <h3 data-i18n="b3_h">Timeline with previews</h3>
         <p data-i18n="b3_p">See your video right on the timeline and find the spot fast.</p>
         <div class="demo thumbs" id="thumbs"></div>
       </div>
-      <div class="cell c2 reveal">
+      <div class="gcard c2 reveal">
         <h3 data-i18n="b4_h">Videos, images &amp; music</h3>
         <p data-i18n="b4_p">Insert more clips – even in other sizes – add logos, and put mp3 music on its own track.</p>
         <div class="demo pills"><span class="pill">.mp4</span><span class="pill">.mov</span><span class="pill">.mkv</span><span class="pill">.mp3</span><span class="pill">.png</span></div>
       </div>
-      <div class="cell c2 reveal">
+      <div class="gcard c2 reveal">
         <h3 data-i18n="b5_h">Export that makes sense</h3>
         <p data-i18n="b5_p">Only options that fit your source are offered, so files never grow for nothing.</p>
         <div class="demo rows"><div><span data-i18n="r_res">Resolution</span><b>1080p</b></div><div><span data-i18n="r_fps">Frame rate</span><b>30 fps</b></div><div><span data-i18n="r_q">Quality</span><b data-i18n="r_bal">Balanced</b></div></div>
       </div>
-      <div class="cell c3 reveal">
-        <h3 data-i18n="b6_h">12 languages</h3>
-        <p data-i18n="b6_p">Asked once on first start, changeable any time.</p>
-        <div class="demo pills"><span class="pill">Deutsch</span><span class="pill">English</span><span class="pill">Español</span><span class="pill">Français</span><span class="pill">Italiano</span><span class="pill">Português</span><span class="pill">Nederlands</span><span class="pill">Polski</span><span class="pill">Türkçe</span><span class="pill">Русский</span><span class="pill">日本語</span><span class="pill">中文</span></div>
+      <div class="gcard c3 reveal" style="background:linear-gradient(135deg,color-mix(in srgb,var(--a2) 14%,var(--card-solid)),var(--card-solid) 60%)">
+        <div class="ic"><svg class="i" viewBox="0 0 24 24"><path d="M8 5l11 7-11 7z"/></svg></div>
+        <h3 data-i18n="b10_h">A great video player, too.</h3>
+        <p data-i18n="b10_p">Set Cutline as your default app for videos: it starts instantly, fullscreen with F11, click to pause, arrows to skip, soft ambient light around the picture. Editing is one key away.</p>
       </div>
-      <div class="cell c3 reveal">
+      <div class="gcard c3 reveal">
         <h3 data-i18n="b7_h">Keyboard-friendly</h3>
         <p data-i18n="b7_p">One key per action. Space plays, arrows skip 5 seconds, F11 shows only the video.</p>
         <div class="demo kbds"><span class="kbd">Space</span><span class="kbd">←</span><span class="kbd">→</span><span class="kbd">S</span><span class="kbd">Q</span><span class="kbd">W</span><span class="kbd">B</span><span class="kbd">I</span><span class="kbd">E</span><span class="kbd">F11</span></div>
       </div>
-      <div class="cell c3 reveal">
-        <h3 data-i18n="b8_h">Fast on any machine</h3>
-        <p data-i18n="b8_p">Uses your graphics card to encode (NVIDIA, Intel, AMD, Apple) and falls back to a quick software encoder.</p>
+      <div class="gcard c3 reveal">
+        <div class="ic"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3a14 14 0 010 18M12 3a14 14 0 000 18"/></svg></div>
+        <h3 data-i18n="b6_h">12 languages</h3>
+        <p data-i18n="b6_p">Deutsch, English, Español, Français, Italiano, Português, Nederlands, Polski, Türkçe, Русский, 日本語, 中文 – asked once on first start.</p>
       </div>
-      <div class="cell c6 reveal" style="background:linear-gradient(135deg,color-mix(in srgb,var(--a1) 14%,var(--card)),var(--card) 60%)">
-        <h3 data-i18n="b10_h">A great video player, too.</h3>
-        <p data-i18n="b10_p">Set Cutline as your default app for videos: it starts instantly, plays mp4, mov and mkv smoothly, and stays out of the way. Fullscreen with F11, click to pause, arrow keys to skip, soft ambient light around the picture. Editing is only one key away – press E whenever you want it.</p>
-        <div class="demo pills"><span class="pill on" data-i18n="b10_a">Open with… Cutline</span><span class="pill">F11 fullscreen</span><span class="pill">Click = pause</span><span class="pill">← → 5 s</span><span class="pill">Ambient light</span></div>
-      </div>
-      <div class="cell c3 reveal">
-        <h3 data-i18n="b9_h">Your files stay yours</h3>
-        <p data-i18n="b9_p">Originals are never changed. Nothing is uploaded. Open source under the MIT license.</p>
+      <div class="gcard c3 reveal" style="background:linear-gradient(135deg,color-mix(in srgb,#ff5f6d 10%,var(--card-solid)),var(--card-solid) 60%)">
+        <div class="pair"><img src="icon.png" alt="" style="border-radius:12px"><span class="arrow">⇄</span><img src="clipline.png" alt=""></div>
+        <h3 data-i18n="b8_h">Works with Clipline</h3>
+        <p data-i18n="b8_p">With Clipline installed, a Clips button shows every saved moment, ready to trim.</p>
       </div>
     </div>
   </div>
 </section>
 
-<section id="themes">
+<section id="quality">
+  <div class="wrap">
+    <div class="center">
+      <p class="label reveal" data-i18n="q_l">Export quality</p>
+      <h2 class="reveal" data-i18n="qq_h">Pick the size. See the result.</h2>
+      <p class="sub reveal" data-i18n="qq_s">A real photo, really scaled to the export resolution – shown like the video in fullscreen on a 1080p screen. Switch photos with the arrows.</p>
+    </div>
+    <div class="resbar reveal" id="resbar">
+      <button data-v="2160">4K</button><button data-v="1440">1440p</button><button data-v="1080" class="on">1080p</button><button data-v="720">720p</button><button data-v="480">480p</button><button data-v="360">360p</button>
+    </div>
+    <div class="qview reveal" id="qview">
+      <canvas id="qcv"></canvas>
+      <span class="tag" id="qtag">1080p</span>
+      <button class="arrow l" id="qprev" aria-label="Previous photo">‹</button>
+      <button class="arrow r" id="qnext" aria-label="Next photo">›</button>
+      <div class="dots" id="qdots"></div>
+      <span class="credit" id="qcredit"></span>
+    </div>
+    <p class="resinfo reveal" id="resinfo"></p>
+  </div>
+</section>
+
+<section id="themes" style="padding-top:30px">
   <div class="wrap center">
     <p class="label reveal" data-i18n="t_l">Themes</p>
     <h2 class="reveal" data-i18n="t_h">Make it yours.</h2>
-    <p class="sub reveal" data-i18n="t_s">Seven looks, from calm dark to full Windows XP. Switch any time in the settings.</p>
+    <p class="sub reveal" data-i18n="t_s">Seven looks, from calm dark to a full Windows XP Luna look. Switch any time in the settings.</p>
     <div class="gallery reveal" id="gallery"></div>
     <div class="frame reveal"><div class="bar"><i></i><i></i><i></i></div><img id="gal-img" src="img/theme-mint.webp" alt="Cutline theme preview" loading="lazy"></div>
   </div>
@@ -344,9 +434,19 @@
   </div>
 </section>
 
-<section id="faq" style="padding-top:20px">
+<section style="padding-top:0">
+  <div class="wrap">
+    <div class="sister reveal">
+      <img src="clipline.png" alt="Clipline logo">
+      <div><h3 data-i18n="sis_h">Never miss the moment to edit.</h3><p data-i18n="sis_p">Clipline records quietly in the background and saves the last minutes of your screen with one key.</p></div>
+      <a class="btn" href="https://erqf1.github.io/clipline/"><span data-i18n="sis_b">Get Clipline</span></a>
+    </div>
+  </div>
+</section>
+
+<section id="faq" style="padding-top:40px">
   <div class="wrap" style="max-width:820px">
-    <div class="center"><p class="label reveal" data-i18n="q_l">FAQ</p><h2 class="reveal" data-i18n="q_h">Questions</h2></div>
+    <div class="center"><p class="label reveal">FAQ</p><h2 class="reveal" data-i18n="q_h">Questions</h2></div>
     <details class="reveal"><summary data-i18n="q1">Is it really free?</summary><p data-i18n="q1a">Yes. Cutline is open source under the MIT license – free to use, share and change.</p></details>
     <details class="reveal"><summary data-i18n="q5">Can I just use it as a video player?</summary><p data-i18n="q5a">Yes. Install it with the installer and it shows up in the “Open with” menu of your videos, where you can also make it the default. It opens instantly, and editing only starts when you press E.</p></details>
     <details class="reveal"><summary data-i18n="q2">Does it change my original videos?</summary><p data-i18n="q2a">Never. Your files stay untouched. Cutline only writes a new file when you export.</p></details>
@@ -355,10 +455,20 @@
   </div>
 </section>
 
+<section style="padding-top:20px">
+  <div class="wrap">
+    <div class="cta reveal">
+      <h2 data-i18n="cta_h">Your next video is three clicks away.</h2>
+      <p class="sub" style="margin:0 auto 30px" data-i18n="cta_s">Open, cut, export. That's it.</p>
+      <div class="dlui"><a class="btn pri" href="#download"><svg class="i" viewBox="0 0 24 24"><path d="M12 3v12M7 10l5 5 5-5M4 20h16"/></svg><span data-i18n="cta_b">Download Cutline</span></a></div>
+    </div>
+  </div>
+</section>
+
 <footer>
   <div class="wrap">
     <span>© 2026 Cutline · MIT License</span>
-    <span><a id="gh-link2" href="#">GitHub</a> · <a id="lic-link" href="#">License</a> · <a id="rel-link" href="#">Releases</a></span>
+    <span><a href="https://github.com/erqf1/cutline">GitHub</a> · <a href="https://github.com/erqf1/cutline/blob/main/LICENSE">License</a> · <a href="https://erqf1.github.io/clipline/">Clipline</a></span>
   </div>
 </footer>
 
@@ -366,96 +476,55 @@
 (function () {
   var $ = function (s, r) { return (r || document).querySelector(s); };
   var $$ = function (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); };
+  var OWNER = 'erqf1', REPO = 'cutline';
+  var latest = 'https://github.com/' + OWNER + '/' + REPO + '/releases/latest/download/';
 
-  // ---------- Repo aus der GitHub-Pages-URL ableiten (owner.github.io/repo) ----------
-  var host = location.hostname, parts = location.pathname.split('/').filter(Boolean);
-  var owner = host.endsWith('.github.io') ? host.split('.')[0] : null;
-  var repo = parts[0] || 'cutline';
-  var base = owner ? 'https://github.com/' + owner + '/' + repo : 'https://github.com/';
-  var latest = owner ? base + '/releases/latest/download/' : '#local-preview:';
-  ['gh-link', 'gh-link2'].forEach(function (id) { $('#' + id).href = base; });
-  $('#all-dl').href = $('#rel-link').href = owner ? base + '/releases' : '#local-preview:';
-  $('#lic-link').href = owner ? base + '/blob/main/LICENSE' : '#local-preview:';
-  ['gh-link', 'gh-link2'].forEach(function (id) { if (!owner) $('#' + id).href = '#local-preview:'; });
-
-  // ---------- Downloads ----------
   var ICON = {
     windows: '<svg class="i" viewBox="0 0 24 24" style="fill:currentColor;stroke:none"><path d="M3 5.5l8-1.1v7.1H3zM12 4.3l9-1.3v8.5h-9zM3 12.5h8v7.1l-8-1.1zM12 12.5h9V21l-9-1.3z"/></svg>',
-    macos: '<svg class="i" viewBox="0 0 24 24" style="fill:currentColor;stroke:none"><path d="M16.4 12.6c0-2.4 2-3.5 2.1-3.6-1.2-1.7-3-1.9-3.6-1.9-1.5-.2-3 .9-3.8.9s-2-.9-3.3-.9C6 7.2 4.4 8.2 3.5 9.7c-1.8 3.1-.5 7.7 1.3 10.2.9 1.2 1.9 2.6 3.2 2.5 1.300-.1 1.800-.8 3.300-.8s2 .8 3.300.8 2.200-1.200 3.100-2.400c1-1.400 1.400-2.800 1.400-2.900-.1 0-2.700-1-2.700-4.500zM14 5.300c.7-.8 1.200-2 1-3.100-1 0-2.200.7-2.900 1.500-.6.700-1.200 1.900-1 3 1.100.1 2.200-.6 2.900-1.400z"/></svg>',
+    macos: '<svg class="i" viewBox="0 0 24 24" style="fill:currentColor;stroke:none"><path d="M16.4 12.6c0-2.4 2-3.5 2.1-3.6-1.2-1.7-3-1.9-3.6-1.9-1.5-.2-3 .9-3.8.9s-2-.9-3.3-.9C6 7.2 4.4 8.2 3.5 9.7c-1.8 3.1-.5 7.7 1.3 10.2.9 1.2 1.9 2.6 3.2 2.5 1.3-.1 1.8-.8 3.3-.8s2 .8 3.3.8 2.2-1.2 3.1-2.4c1-1.4 1.4-2.8 1.4-2.9-.1 0-2.7-1-2.7-4.5zM14 5.3c.7-.8 1.2-2 1-3.1-1 0-2.2.7-2.9 1.5-.6.7-1.2 1.9-1 3 1.1.1 2.2-.6 2.9-1.4z"/></svg>',
     linux: '<svg class="i" viewBox="0 0 24 24"><path d="M4 5h16v14H4zM8 10l3 2-3 2M13 14h3"/></svg>'
   };
   var DL = {
     windows: [
-      { file: 'Cutline-windows-x64-setup.exe', size: 75, t: { en: 'Installer', de: 'Installer' },
-        d: { en: 'recommended · adds \u201cOpen with\u201d for videos', de: 'empfohlen · registriert \u201e\u00d6ffnen mit\u201c f\u00fcr Videos' } },
-      { file: 'Cutline-windows-x64.zip', size: 74, t: { en: 'Portable', de: 'Portabel' },
-        d: { en: 'no installation, no admin rights · Windows 10+', de: 'keine Installation, keine Adminrechte · ab Windows 10' } }
+      { file: 'Cutline-windows-x64-setup.exe', size: 60, t: { en: 'Installer', de: 'Installer' }, d: { en: 'recommended · adds “Open with” for videos', de: 'empfohlen · registriert „Öffnen mit“ für Videos' } },
+      { file: 'Cutline-windows-x64.zip', size: 76, t: { en: 'Portable', de: 'Portabel' }, d: { en: 'no installation, no admin rights · Windows 10+', de: 'keine Installation, keine Adminrechte · ab Windows 10' } }
     ],
     linux: [
-      { file: 'cutline_amd64.deb', size: 1, t: { en: 'Debian / Ubuntu (.deb)', de: 'Debian / Ubuntu (.deb)' },
-        d: { en: 'also Mint, Pop!_OS, elementary', de: 'auch Mint, Pop!_OS, elementary' }, cmd: 'sudo apt install ./cutline_amd64.deb' },
-      { file: 'cutline-x86_64.pkg.tar.zst', size: 1, t: { en: 'Arch (pacman)', de: 'Arch (pacman)' },
-        d: { en: 'also Manjaro, EndeavourOS', de: 'auch Manjaro, EndeavourOS' }, cmd: 'sudo pacman -U cutline-x86_64.pkg.tar.zst' },
-      { file: 'cutline-linux-x86_64.tar.gz', size: 30, t: { en: 'tar.gz', de: 'tar.gz' },
-        d: { en: 'any distribution · needs Qt 6', de: 'jede Distribution · benötigt Qt 6' }, cmd: 'tar xf cutline-linux-x86_64.tar.gz && ./cutline-linux-x86_64/install.sh' }
+      { file: 'cutline_amd64.deb', size: 1, t: { en: 'Debian / Ubuntu (.deb)', de: 'Debian / Ubuntu (.deb)' }, d: { en: 'also Mint, Pop!_OS, elementary', de: 'auch Mint, Pop!_OS, elementary' }, cmd: 'sudo apt install ./cutline_amd64.deb' },
+      { file: 'cutline-x86_64.pkg.tar.zst', size: 1, t: { en: 'Arch (pacman)', de: 'Arch (pacman)' }, d: { en: 'also Manjaro, EndeavourOS', de: 'auch Manjaro, EndeavourOS' }, cmd: 'sudo pacman -U cutline-x86_64.pkg.tar.zst' },
+      { file: 'cutline-linux-x86_64.tar.gz', size: 28, t: { en: 'tar.gz', de: 'tar.gz' }, d: { en: 'any distribution · needs Qt 6', de: 'jede Distribution · benötigt Qt 6' }, cmd: 'tar xf cutline-linux-x86_64.tar.gz && ./cutline-linux-x86_64/install.sh' }
     ],
     macos: [
-      { file: 'Cutline-macos-apple-silicon.dmg', size: 60, t: { en: 'Apple Silicon', de: 'Apple Silicon' },
-        d: { en: 'M1, M2, M3, M4 and newer', de: 'M1, M2, M3, M4 und neuer' } },
-      { file: 'Cutline-macos-intel.dmg', size: 60, t: { en: 'Intel', de: 'Intel' },
-        d: { en: 'Macs with an Intel processor', de: 'Macs mit Intel-Prozessor' } }
+      { file: 'Cutline-macos-apple-silicon.dmg', size: 66, t: { en: 'Apple Silicon', de: 'Apple Silicon' }, d: { en: 'M1, M2, M3, M4 and newer', de: 'M1, M2, M3, M4 und neuer' } },
+      { file: 'Cutline-macos-intel.dmg', size: 70, t: { en: 'Intel', de: 'Intel' }, d: { en: 'Macs with an Intel processor', de: 'Macs mit Intel-Prozessor' } }
     ]
   };
   var OSNAME = { windows: 'Windows', macos: 'macOS', linux: 'Linux' };
-  var lang = 'en', sizes = {};   // sizes: aus der GitHub-API, sonst Näherungswerte
-
+  var lang = 'en', sizes = {};
   var ua = navigator.userAgent, myOS = /Windows/.test(ua) ? 'windows' : /Mac/.test(ua) && !/iPhone|iPad/.test(ua) ? 'macos' : /Linux|X11/.test(ua) && !/Android/.test(ua) ? 'linux' : 'windows';
-
-  function fmtSize(it) {
-    var b = sizes[it.file]; var mb = b ? b / 1048576 : null;
-    if (mb === null) return (it.size <= 1 ? '< 2' : '~' + it.size) + ' MB';
-    return (mb < 10 ? mb.toFixed(1) : Math.round(mb)) + ' MB';
-  }
+  function fmtSize(it) { var b = sizes[it.file]; if (!b) return (it.size <= 1 ? '< 2' : '~' + it.size) + ' MB'; var mb = b / 1048576; return (mb < 10 ? mb.toFixed(1) : Math.round(mb)) + ' MB'; }
   function itemHTML(it, withIcon, os) {
-    return '<a class="item" role="menuitem" href="' + latest + it.file + '">' +
-      (withIcon ? '<span class="dlic">' + ICON[os] + '</span>' : '') +
+    return '<a class="item" role="menuitem" href="' + latest + it.file + '">' + (withIcon ? '<span class="dlic">' + ICON[os] + '</span>' : '') +
       '<span class="t"><b>' + it.t[lang] + '</b><small>' + it.d[lang] + '</small></span><span class="sz">' + fmtSize(it) + '</span></a>';
   }
   function cmdHTML(it) {
-    return it.cmd ? '<div class="cmd"><code>' + it.cmd.replace(/&/g, '&amp;') + '</code><button type="button" data-copy="' + it.cmd.replace(/"/g, '&quot;') + '" aria-label="Copy">' +
-      '<svg class="i" viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 012-2h10"/></svg></button></div>' : '';
+    return it.cmd ? '<div class="cmd"><code>' + it.cmd.replace(/&/g, '&amp;') + '</code><button type="button" data-copy="' + it.cmd.replace(/"/g, '&quot;') + '" aria-label="Copy"><svg class="i" viewBox="0 0 24 24"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 012-2h10"/></svg></button></div>' : '';
   }
-  function tabsHTML(active, attr) {
-    return Object.keys(OSNAME).map(function (k) { return '<button type="button" ' + attr + '="' + k + '" class="' + (k === active ? 'on' : '') + '">' + OSNAME[k] + '</button>'; }).join('');
-  }
+  function tabsHTML(active, attr) { return Object.keys(OSNAME).map(function (k) { return '<button type="button" ' + attr + '="' + k + '" class="' + (k === active ? 'on' : '') + '">' + OSNAME[k] + '</button>'; }).join(''); }
   var otherTab = myOS, panelTab = myOS;
-
   function render() {
-    // Hauptknopf
     var list = DL[myOS], single = list.length === 1;
-    var label = { en: 'Download for ' + OSNAME[myOS], de: 'Für ' + OSNAME[myOS] + ' herunterladen' }[lang];
-    $('#main-label').textContent = label;
+    $('#main-label').textContent = { en: 'Download for ' + OSNAME[myOS], de: 'Für ' + OSNAME[myOS] + ' herunterladen' }[lang];
     $('#main-chev').style.display = single ? 'none' : '';
     $('#main-btn').href = single ? latest + list[0].file : '#download';
     $('#main-menu').innerHTML = single ? '' : list.map(function (it) { return itemHTML(it, false, myOS); }).join('');
-    // Anderes System
     $('#other-tabs').innerHTML = tabsHTML(otherTab, 'data-otab');
     $('#other-list').innerHTML = DL[otherTab].map(function (it) { return itemHTML(it, false, otherTab); }).join('');
-    // Download-Bereich (mit Befehlen)
     $('#panel-tabs').innerHTML = tabsHTML(panelTab, 'data-ptab');
     $('#panel-list').innerHTML = DL[panelTab].map(function (it) { return itemHTML(it, true, panelTab) + cmdHTML(it); }).join('');
   }
-
-  // Menüs
-  function closeAll(except) {
-    $$('.menu.open').forEach(function (m) { if (m !== except) { m.classList.remove('open'); var b = m.parentNode.querySelector('.btn'); if (b) b.setAttribute('aria-expanded', 'false'); } });
-  }
-  function toggle(btn, menu) {
-    var open = !menu.classList.contains('open');
-    closeAll(open ? menu : null);
-    menu.classList.toggle('open', open);
-    btn.setAttribute('aria-expanded', open);
-  }
+  function closeAll(except) { $$('.menu.open').forEach(function (m) { if (m !== except) { m.classList.remove('open'); var b = m.parentNode.querySelector('.btn'); if (b) b.setAttribute('aria-expanded', 'false'); } }); }
+  function toggle(btn, menu) { var open = !menu.classList.contains('open'); closeAll(open ? menu : null); menu.classList.toggle('open', open); btn.setAttribute('aria-expanded', open); }
   $('#main-btn').addEventListener('click', function (e) { if (DL[myOS].length > 1) { e.preventDefault(); toggle(this, $('#main-menu')); } });
   $('#other-btn').addEventListener('click', function () { toggle(this, $('#other-menu')); });
   document.addEventListener('click', function (e) {
@@ -463,36 +532,26 @@
     if (!t.closest('.dd')) closeAll();
     var ot = t.closest('[data-otab]'); if (ot) { otherTab = ot.dataset.otab; render(); $('#other-menu').classList.add('open'); }
     var pt = t.closest('[data-ptab]'); if (pt) { panelTab = pt.dataset.ptab; render(); }
-    var cp = t.closest('[data-copy]');
-    if (cp) { try { navigator.clipboard.writeText(cp.dataset.copy); cp.style.color = 'var(--label)'; setTimeout(function () { cp.style.color = ''; }, 1200); } catch (x) {} }
-    var chip = t.closest('.chip');
-    if (chip) { otherTab = chip.dataset.tab; render(); closeAll(); var m = $('#other-menu'); m.classList.add('open'); $('#other-btn').setAttribute('aria-expanded', 'true'); }
+    var cp = t.closest('[data-copy]'); if (cp) { try { navigator.clipboard.writeText(cp.dataset.copy); cp.style.color = 'var(--label)'; setTimeout(function () { cp.style.color = ''; }, 1200); } catch (x) {} }
+    var chip = t.closest('.chip'); if (chip) { otherTab = chip.dataset.tab; render(); closeAll(); $('#other-menu').classList.add('open'); $('#other-btn').setAttribute('aria-expanded', 'true'); }
   });
   document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeAll(); });
-  // Lokale Vorschau: Die Links kennen das GitHub-Repo erst, wenn die Seite auf GitHub Pages liegt (name.github.io/cutline)
-  document.addEventListener('click', function (e) {
-    var a = e.target.closest('a[href^="#local-preview:"]');
-    if (a) { e.preventDefault(); alert('Preview only: download links work once this page is published on GitHub Pages (yourname.github.io/cutline).'); }
-  });
+  fetch('https://api.github.com/repos/' + OWNER + '/' + REPO + '/releases/latest').then(function (r) { return r.ok ? r.json() : null; }).then(function (j) {
+    if (!j) return;
+    $('#ver').textContent = (j.tag_name || '').replace(/^v/, '') || $('#ver').textContent;
+    (j.assets || []).forEach(function (a) { sizes[a.name] = a.size; });
+    render();
+  }).catch(function () {});
 
-  // Version + Dateigrößen aus der GitHub-API
-  if (owner) {
-    fetch('https://api.github.com/repos/' + owner + '/' + repo + '/releases/latest').then(function (r) { return r.ok ? r.json() : null; }).then(function (j) {
-      if (!j) return;
-      $('#ver').textContent = (j.tag_name || '').replace(/^v/, '') || $('#ver').textContent;
-      (j.assets || []).forEach(function (a) { sizes[a.name] = a.size; });
-      render();
-    }).catch(function () {});
-  }
-
-  // ---------- Theme (dark / light) ----------
   $('#theme-btn').addEventListener('click', function () {
     var t = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
     document.documentElement.dataset.theme = t;
     try { localStorage.setItem('theme', t); } catch (e) {}
   });
 
-  // ---------- Theme-Galerie ----------
+  var tsrc = ['bird', 'valley', 'falls', 'bird', 'valley', 'falls', 'bird', 'valley'];
+  $('#thumbs').innerHTML = tsrc.map(function (s, i) { return '<i style="background-image:url(img/photo-' + s + '.webp);background-position:' + (i * 13 % 100) + '% 40%"></i>'; }).join('') + '<span class="ph"></span>';
+
   var THEMES = [['mint', 'Mint', '#4ade9b'], ['ocean', 'Ocean', '#4aa3ff'], ['violet', 'Violet', '#a78bfa'], ['sunset', 'Sunset', '#ff8a4c'],
                 ['light', 'Light', '#e8ebf2'], ['xp', 'Windows XP', '#316ac5'], ['terminal', 'Terminal', '#cccccc']];
   var gal = $('#gallery');
@@ -504,19 +563,67 @@
     setTimeout(function () { img.src = 'img/theme-' + b.dataset.th + '.webp'; img.style.opacity = 1; }, 160);
   });
 
-  // ---------- Deko: Thumbnail-Streifen ----------
-  $('#thumbs').innerHTML = Array.apply(null, Array(9)).map(function (_, i) { return '<i style="background:linear-gradient(135deg,hsl(' + (250 + i * 9) + ' 80% 62%),hsl(' + (290 + i * 7) + ' 75% 55%))"></i>'; }).join('');
+  // Qualitätsansicht: Foto wirklich auf die Auflösung rechnen, dann wie im Vollbild anzeigen
+  var PHOTOS = [
+    { src: 'img/photo-bird.webp', fx: .47, fy: .42, credit: 'Anhinga · NPS Everglades · Public domain' },
+    { src: 'img/photo-valley.webp', fx: .50, fy: .30, credit: 'Oolah Valley · NPS Alaska · Public domain' },
+    { src: 'img/photo-falls.webp', fx: .56, fy: .36, credit: 'Chute-Montmorency · Wikimedia Commons · CC0' }
+  ];
+  var qRes = 1080, qIdx = 0, qImgs = {}, low = document.createElement('canvas'), cv = $('#qcv'), ctx = cv.getContext('2d');
+  function loadPhoto(i, cb) {
+    if (qImgs[i] && qImgs[i].complete) return cb(qImgs[i]);
+    var im = new Image(); im.onload = function () { cb(im); }; im.src = PHOTOS[i].src; qImgs[i] = im;
+  }
+  function downscale(img, w, h) {
+    var src = img, sw = img.naturalWidth, sh = img.naturalHeight;
+    while (sw / 2 >= w) {
+      var t = document.createElement('canvas'); t.width = Math.round(sw / 2); t.height = Math.round(sh / 2);
+      var tc = t.getContext('2d'); tc.imageSmoothingQuality = 'high'; tc.drawImage(src, 0, 0, t.width, t.height);
+      src = t; sw = t.width; sh = t.height;
+    }
+    low.width = w; low.height = h;
+    var lc = low.getContext('2d'); lc.imageSmoothingQuality = 'high'; lc.drawImage(src, 0, 0, w, h);
+    return low;
+  }
+  function drawQ() {
+    var ph = PHOTOS[qIdx];
+    loadPhoto(qIdx, function (img) {
+      var box = $('#qview'), dpr = window.devicePixelRatio || 1;
+      cv.width = Math.round(box.clientWidth * dpr); cv.height = Math.round(box.clientHeight * dpr);
+      var h = qRes, w = Math.round(h * 16 / 9 / 2) * 2, frame = downscale(img, w, h);
+      var cw = w / 2, ch = h / 2;
+      var cx = Math.min(w - cw, Math.max(0, w * ph.fx - cw / 2)), cy = Math.min(h - ch, Math.max(0, h * ph.fy - ch / 2));
+      ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(frame, cx, cy, cw, ch, 0, 0, cv.width, cv.height);
+      var name = h === 2160 ? '4K' : h + 'p';
+      $('#qtag').textContent = name + ' · ' + w + '×' + h;
+      $('#qcredit').textContent = ph.credit;
+      $('#qdots').innerHTML = PHOTOS.map(function (_, i) { return '<button data-i="' + i + '" class="' + (i === qIdx ? 'on' : '') + '" aria-label="Photo ' + (i + 1) + '"></button>'; }).join('');
+      var mbMin = w * h * 30 * 0.1 / 8 * 60 / 1048576;
+      $('#resinfo').innerHTML = '<b>' + name + '</b> · ' + w + '×' + h + ' · ' + (lang === 'de' ? '1 Minute Video bei 30 fps ≈ <b>' : '1 minute of video at 30 fps ≈ <b>') + Math.max(5, Math.round(mbMin)) + ' MB</b>';
+    });
+  }
+  window.addEventListener('resize', drawQ);
+  $('#resbar').addEventListener('click', function (e) {
+    var b = e.target.closest('button'); if (!b) return;
+    $$('button', $('#resbar')).forEach(function (x) { x.classList.toggle('on', x === b); });
+    qRes = +b.dataset.v; drawQ();
+  });
+  $('#qprev').addEventListener('click', function () { qIdx = (qIdx + PHOTOS.length - 1) % PHOTOS.length; drawQ(); });
+  $('#qnext').addEventListener('click', function () { qIdx = (qIdx + 1) % PHOTOS.length; drawQ(); });
+  $('#qdots').addEventListener('click', function (e) { var b = e.target.closest('[data-i]'); if (b) { qIdx = +b.dataset.i; drawQ(); } });
 
-  // ---------- Sprache ----------
   var T = { de: {
     nav_how:'So funktioniert’s', nav_features:'Funktionen', nav_themes:'Designs', nav_download:'Download',
     badge_new:'Kostenlos', badge_t:'Windows · Linux · macOS',
     h1a:'Videoschnitt, der dir', h1b:'nicht im Weg steht.',
-    lead:'Cutline ist ein einfacher Video-Editor. Clip öffnen, schneiden, unkenntlich machen was weg soll, Musik dazu, exportieren. Keine Projekte, kein Import, kein Ballast – nur die Werkzeuge, die du wirklich brauchst. Und wenn du nicht schneiden willst, ist es auch ein schneller, aufgeräumter Video-Player.',
+    lead:'Cutline ist ein einfacher Video-Editor. Clip öffnen, schneiden, unkenntlich machen was weg soll, Musik dazu, exportieren. Keine Projekte, kein Import, kein Ballast – und wenn du nicht schneiden willst, ist es auch ein schneller, aufgeräumter Video-Player.',
     other:'Anderes System', version:'Version', all_dl:'alle Downloads auf GitHub',
+    fl1:'Geteilt bei 0:42', fl1s:'Taste S', fl2:'Bereich unkenntlich', fl2s:'live in der Vorschau', fl3:'Exportiere 1080p',
+    s1:'Import – es läuft einfach', s2:'pro Aktion, kein Menü-Suchen', s3:'Sprachen, 7 Designs', s4:'beschleunigter Export',
     how_l:'So funktioniert’s', how_h:'Drei Schritte. Das ist die ganze App.', how_s:'Keine Konten, keine Cloud, keine Einarbeitung. Alles passiert auf deinem Computer.',
     st1_h:'Öffnen', st1_p:'Video ins Fenster ziehen. Es läuft sofort – ohne Import und ohne Projekt anzulegen.',
-    st2_h:'Bearbeiten', st2_p:'Mit E kommt die Timeline. Teilen, kürzen, Tempo ändern, ein Gesicht verpixeln, Logo oder Musik hinzufügen.',
+    st2_h:'Bearbeiten', st2_p:'Mit E kommt die Timeline. Teilen, kürzen, Tempo ändern, ein Gesicht unkenntlich machen, Logo oder Musik hinzufügen.',
     st3_h:'Exportieren', st3_p:'Auflösung, Bildrate und Qualität wählen. Ein Klick, und dein neues Video ist fertig.',
     f_l:'Funktionen', f_h:'Alles, was du brauchst. Nichts, was du nicht brauchst.', f_s:'Eine kurze Liste von Dingen, die richtig gut gemacht sind.',
     b1_h:'Echte Unschärfe, live in der Vorschau', b1_p:'Gesichter, Kennzeichen oder Text verbergen. Bereich ziehen, Größe ändern, Dauer festlegen – und die echte Unschärfe schon beim Bearbeiten sehen, nicht nur einen Kasten.',
@@ -525,40 +632,38 @@
     b4_h:'Videos, Bilder & Musik', b4_p:'Weitere Clips einfügen – auch in anderen Größen –, Logos platzieren und mp3-Musik auf eigener Spur.',
     b5_h:'Export mit Verstand', b5_p:'Es werden nur Optionen angeboten, die zu deinem Material passen – Dateien werden nie umsonst größer.',
     r_res:'Auflösung', r_fps:'Bildrate', r_q:'Qualität', r_bal:'Ausgewogen',
-    b6_h:'12 Sprachen', b6_p:'Wird beim ersten Start gefragt und lässt sich jederzeit ändern.',
+    b10_h:'Auch ein richtig guter Video-Player.', b10_p:'Setze Cutline als Standard-App für Videos: Es startet sofort, Vollbild mit F11, Klick pausiert, Pfeile springen, sanftes Umgebungslicht ums Bild. Bearbeiten ist nur eine Taste entfernt.',
     b7_h:'Tastatur-freundlich', b7_p:'Eine Taste pro Aktion. Leertaste spielt ab, Pfeile springen 5 Sekunden, F11 zeigt nur das Video.',
-    b8_h:'Schnell auf jedem Rechner', b8_p:'Nutzt deine Grafikkarte zum Kodieren (NVIDIA, Intel, AMD, Apple) und fällt sonst auf einen schnellen Software-Encoder zurück.',
-    b10_h:'Auch ein richtig guter Video-Player.', b10_p:'Setze Cutline als Standard-App für Videos: Es startet sofort, spielt mp4, mov und mkv flüssig ab und hält sich zurück. Vollbild mit F11, Klick zum Pausieren, Pfeiltasten zum Springen, sanftes Umgebungslicht ums Bild. Bearbeiten ist nur eine Taste entfernt – E drücken, wenn du willst.', b10_a:'Öffnen mit… Cutline',
-    b9_h:'Deine Dateien bleiben deine', b9_p:'Originale werden nie verändert. Nichts wird hochgeladen. Open Source unter MIT-Lizenz.',
-    t_l:'Designs', t_h:'Mach es zu deinem.', t_s:'Sieben Looks, von ruhigem Dunkel bis Windows XP. Jederzeit in den Einstellungen wechselbar.',
+    b6_h:'12 Sprachen', b6_p:'Deutsch, English, Español, Français, Italiano, Português, Nederlands, Polski, Türkçe, Русский, 日本語, 中文 – beim ersten Start gefragt.',
+    b8_h:'Arbeitet mit Clipline', b8_p:'Ist Clipline installiert, zeigt ein Clips-Knopf jeden gespeicherten Moment – bereit zum Schneiden.',
+    q_l:'Export-Qualität', qq_h:'Größe wählen. Ergebnis sehen.', qq_s:'Ein echtes Foto, wirklich auf die Export-Auflösung gerechnet – so, wie das Video im Vollbild auf einem 1080p-Bildschirm aussieht. Mit den Pfeilen wechselst du das Foto.',
+    t_l:'Designs', t_h:'Mach es zu deinem.', t_s:'Sieben Looks, von ruhigem Dunkel bis zum kompletten Windows-XP-Luna-Look. Jederzeit in den Einstellungen wechselbar.',
     d_l:'Download', d_h:'Hol dir Cutline.', d_s:'Für alle kostenlos. System wählen – jede Datei kommt direkt von GitHub Releases.',
     d_note:'Unter macOS ist die App nicht notarisiert: beim ersten Mal Rechtsklick auf Cutline → Öffnen. Nicht sicher, welchen Mac du hast? Apple-Menü → Über diesen Mac.',
-    q_l:'FAQ', q_h:'Fragen',
+    sis_h:'Verpass nie wieder den Moment.', sis_p:'Clipline nimmt leise im Hintergrund auf und speichert die letzten Minuten deines Bildschirms mit einer Taste.', sis_b:'Clipline holen',
+    q_h:'Fragen',
     q1:'Ist es wirklich kostenlos?', q1a:'Ja. Cutline ist Open Source unter der MIT-Lizenz – frei nutzbar, teilbar und veränderbar.',
+    q5:'Kann ich es einfach als Video-Player benutzen?', q5a:'Ja. Mit dem Installer erscheint es im „Öffnen mit“-Menü deiner Videos, dort kannst du es auch zum Standard machen. Es startet sofort, und bearbeitet wird erst, wenn du E drückst.',
     q2:'Verändert es meine Originalvideos?', q2a:'Nie. Deine Dateien bleiben unberührt. Cutline schreibt erst beim Export eine neue Datei.',
     q3:'Welche Formate öffnet es?', q3a:'mp4, mov, mkv, webm, avi und mehr. Exportiert wird als mp4 (H.264 + AAC), das überall läuft.',
-    q5:'Kann ich es einfach als Video-Player benutzen?', q5a:'Ja. Mit dem Installer erscheint es im „Öffnen mit“-Menü deiner Videos, dort kannst du es auch zum Standard machen. Es startet sofort, und bearbeitet wird erst, wenn du E drückst.',
-    q4:'Muss ich noch etwas installieren?', q4a:'Windows- und macOS-Versionen enthalten alles. Die .deb- und Arch-Pakete holen Qt und ffmpeg automatisch aus deiner Distribution; das tar.gz braucht installiertes Qt 6.'
+    q4:'Muss ich noch etwas installieren?', q4a:'Windows- und macOS-Versionen enthalten alles. Die .deb- und Arch-Pakete holen Qt und ffmpeg automatisch aus deiner Distribution; das tar.gz braucht installiertes Qt 6.',
+    cta_h:'Dein nächstes Video ist drei Klicks entfernt.', cta_s:'Öffnen, schneiden, exportieren. Fertig.', cta_b:'Cutline herunterladen'
   } };
   var orig = {};
   $$('[data-i18n]').forEach(function (el) { orig[el.dataset.i18n] = el.innerHTML; });
   function applyLang(l) {
     lang = l; document.documentElement.lang = l;
-    $$('[data-i18n]').forEach(function (el) {
-      var k = el.dataset.i18n, v = l === 'en' ? orig[k] : (T[l] && T[l][k]);
-      if (v != null) el.innerHTML = v;
-    });
-    render();
+    $$('[data-i18n]').forEach(function (el) { var k = el.dataset.i18n, v = l === 'en' ? orig[k] : (T[l] && T[l][k]); if (v != null) el.innerHTML = v; });
+    render(); drawQ();
     try { localStorage.setItem('lang', l); } catch (e) {}
   }
   var sel = $('#lang'), saved = null;
   try { saved = localStorage.getItem('lang'); } catch (e) {}
-  var start = saved && T[saved] ? saved : 'en';   // Englisch ist Standard; Deutsch nur nach eigener Auswahl
+  var start = saved && T[saved] ? saved : 'en';
   sel.value = start;
   sel.addEventListener('change', function () { applyLang(sel.value); });
   applyLang(start);
 
-  // ---------- Einblenden beim Scrollen ----------
   if ('IntersectionObserver' in window) {
     var io = new IntersectionObserver(function (es) { es.forEach(function (e) { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } }); }, { threshold: .12 });
     $$('.reveal').forEach(function (el) { io.observe(el); });
