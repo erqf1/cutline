@@ -1,6 +1,10 @@
 #include "dialogs.h"
 
+#include <QDir>
+#include <QFileDialog>
+#include <QFileInfo>
 #include <QFormLayout>
+#include <QMessageBox>
 #include <QHBoxLayout>
 #include <QPushButton>
 #include <QVBoxLayout>
@@ -73,8 +77,8 @@ void SettingsDialog::retranslate() {
 }
 
 // ---------------------------------------------------------------- Export
-ExportDialog::ExportDialog(QWidget* parent, int srcW, int srcH, double srcFps)
-    : QDialog(parent), srcW_(srcW), srcH_(srcH) {
+ExportDialog::ExportDialog(QWidget* parent, int srcW, int srcH, double srcFps, const QString& sourcePath)
+    : QDialog(parent), srcW_(srcW), srcH_(srcH), source_(sourcePath) {
     setWindowTitle(T("export"));
     setMinimumWidth(420);
     auto* v = new QVBoxLayout(this);
@@ -111,6 +115,49 @@ ExportDialog::ExportDialog(QWidget* parent, int srcW, int srcH, double srcFps)
     hint->setWordWrap(true);
     v->addWidget(hint);
 
+    // Ziel: Name + Speicherort (mit Durchsuchen) oder Originaldatei ersetzen
+    v->addSpacing(6);
+    auto* dest = new QLabel(T("save_to"));
+    dest->setObjectName("title");
+    v->addWidget(dest);
+    auto* form2 = new QFormLayout;
+    form2->setSpacing(10);
+    const QFileInfo src(source_);
+    name_ = new QLineEdit(src.completeBaseName() + "_edit");
+    auto* nameRow = new QHBoxLayout;
+    nameRow->addWidget(name_, 1);
+    nameRow->addWidget(new QLabel(".mp4"));
+    form2->addRow(T("file_name"), nameRow);
+    folder_ = new QLineEdit(QDir::toNativeSeparators(src.absolutePath()));
+    browse_ = new QPushButton(T("browse"));
+    connect(browse_, &QPushButton::clicked, this, [this] {
+        const QString d = QFileDialog::getExistingDirectory(this, T("folder"), folder_->text());
+        if (!d.isEmpty()) folder_->setText(QDir::toNativeSeparators(d));
+    });
+    auto* folderRow = new QHBoxLayout;
+    folderRow->addWidget(folder_, 1);
+    folderRow->addWidget(browse_);
+    form2->addRow(T("folder"), folderRow);
+    v->addLayout(form2);
+    replace_ = new QCheckBox(T("replace_orig"));
+    replace_->setToolTip(T("replace_hint"));
+    auto* rhint = new QLabel(T("replace_hint"));
+    rhint->setObjectName("hint");
+    rhint->setWordWrap(true);
+    rhint->hide();
+    v->addWidget(replace_);
+    v->addWidget(rhint);
+    const QString savedName = name_->text();
+    connect(replace_, &QCheckBox::toggled, this, [this, rhint, savedName](bool on) {
+        const QFileInfo fi(source_);
+        name_->setText(on ? fi.completeBaseName() : savedName);
+        folder_->setText(QDir::toNativeSeparators(fi.absolutePath()));
+        name_->setEnabled(!on);
+        folder_->setEnabled(!on);
+        browse_->setEnabled(!on);
+        rhint->setVisible(on);
+    });
+
     auto* row = new QHBoxLayout;
     auto* cancel = new QPushButton(T("cancel"));
     auto* ok = new QPushButton(T("export"));
@@ -135,4 +182,22 @@ ExportOptions ExportDialog::options() const {
     o.quality = quality_->currentData().toInt();
     o.encoder = detectEncoder();
     return o;
+}
+
+QString ExportDialog::outputPath() const {
+    QString n = name_->text().trimmed();
+    if (n.endsWith(".mp4", Qt::CaseInsensitive)) n.chop(4);
+    return QDir(QDir::fromNativeSeparators(folder_->text().trimmed())).filePath(n + ".mp4");
+}
+
+bool ExportDialog::replaceOriginal() const { return replace_->isChecked(); }
+
+void ExportDialog::accept() {
+    if (name_->text().trimmed().isEmpty()) { name_->setFocus(); return; }
+    if (!QDir(QDir::fromNativeSeparators(folder_->text().trimmed())).exists()) { folder_->setFocus(); return; }
+    const QString out = outputPath();
+    if (!replaceOriginal() && QFileInfo::exists(out) &&
+        QMessageBox::question(this, T("export"), T("overwrite_q").arg(QFileInfo(out).fileName())) != QMessageBox::Yes)
+        return;
+    QDialog::accept();
 }

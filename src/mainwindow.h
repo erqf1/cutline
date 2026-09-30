@@ -85,6 +85,8 @@ private:
     void setEditMode(bool on);
     void applyLayoutVisibility();
     void toggleFullscreen();
+    void placeVideoControls();
+    void showFullscreenHint();
     void enterFullscreen();
     void exitFullscreen();
     void openDialog();
@@ -160,7 +162,8 @@ private:
 
     // UI
     std::vector<BtnSpec> btns_;
-    QPushButton *btnPlay_, *btnEdit_;
+    QPushButton *btnPlay_, *btnEdit_, *fsBtn_ = nullptr;
+    QLabel* fsHint_ = nullptr;
     QSlider *slider_, *sliderStr_;
     QLabel *lblTime_, *lblHint_, *lblPiece_, *lblItem_, *lblStr_, *lblVolIcon_;
     QLabel *lblInspHint_, *lblSegment_, *lblSpeed_, *lblStart_, *lblEnd_;

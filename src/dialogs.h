@@ -1,5 +1,7 @@
 #pragma once
+#include <QCheckBox>
 #include <QComboBox>
+#include <QLineEdit>
 #include <QDialog>
 #include <QLabel>
 #include <QListWidget>
@@ -37,10 +39,17 @@ private:
 class ExportDialog : public QDialog {
     Q_OBJECT
 public:
-    ExportDialog(QWidget* parent, int srcW, int srcH, double srcFps);
+    ExportDialog(QWidget* parent, int srcW, int srcH, double srcFps, const QString& sourcePath);
     ExportOptions options() const;
+    QString outputPath() const;      // Ziel (bei "Original ersetzen": der spätere Dateiname)
+    bool replaceOriginal() const;
+    void accept() override;
 
 private:
     int srcW_, srcH_;
+    QString source_;
     QComboBox *res_, *fps_, *quality_;
+    QLineEdit *name_, *folder_;
+    QPushButton* browse_;
+    QCheckBox* replace_;
 };

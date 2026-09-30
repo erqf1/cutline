@@ -1,6 +1,9 @@
 #include "mainwindow.h"
 
 #include <QAction>
+#include <QDateTime>
+#include <QGraphicsOpacityEffect>
+#include <QPropertyAnimation>
 #include <QApplication>
 #include <QCloseEvent>
 #include <QDir>
@@ -154,7 +157,7 @@ void MainWindow::buildUi() {
     connect(player_, &QMediaPlayer::durationChanged, this, &MainWindow::onDuration);
     connect(player_, &QMediaPlayer::playbackStateChanged, this, &MainWindow::onState);
     connect(player_, &QMediaPlayer::mediaStatusChanged, this, &MainWindow::onStatus);
-    connect(view_, &VideoView::emptyClicked, this, &MainWindow::togglePlay);
+    connect(view_, &VideoView::emptyClicked, this, [this] { pr_.pieces.isEmpty() ? openDialog() : togglePlay(); });
     timer_ = new QTimer(this);
     timer_->setInterval(15);
     connect(timer_, &QTimer::timeout, this, &MainWindow::tick);
@@ -162,10 +165,14 @@ void MainWindow::buildUi() {
     cursorTimer_->setSingleShot(true);
     cursorTimer_->setInterval(1800);
     connect(cursorTimer_, &QTimer::timeout, this, [this] {
-        if (fullscreen_) view_->viewport()->setCursor(Qt::BlankCursor);
+        if (fullscreen_) {
+            view_->viewport()->setCursor(Qt::BlankCursor);
+            fsBtn_->hide();
+        }
     });
     connect(view_, &VideoView::mouseActivity, this, [this] {
         view_->viewport()->unsetCursor();
+        fsBtn_->show();
         if (fullscreen_) cursorTimer_->start();
     });
 
@@ -178,22 +185,15 @@ void MainWindow::buildUi() {
     auto* bOpen = mk("open", "open_video", Ic::Open, nullptr, " (Ctrl+O)");
     auto* bAddV = mk("add_video", nullptr, Ic::AddVideo);
     auto* bAddA = mk("add_audio", nullptr, Ic::AddAudio);
-    btnEdit_ = mk("edit", nullptr, Ic::Edit, nullptr, " (E)");
-    btnEdit_->setCheckable(true);
-    auto* bSet = mk(nullptr, "settings", Ic::Settings);
     auto* bExp = mk("export", nullptr, Ic::Export, "primary", " (Ctrl+E)");
     connect(bOpen, &QPushButton::clicked, this, &MainWindow::openDialog);
     connect(bAddV, &QPushButton::clicked, this, &MainWindow::addVideo);
     connect(bAddA, &QPushButton::clicked, this, &MainWindow::addAudio);
-    connect(btnEdit_, &QPushButton::toggled, this, &MainWindow::setEditMode);
-    connect(bSet, &QPushButton::clicked, this, &MainWindow::openSettings);
     connect(bExp, &QPushButton::clicked, this, &MainWindow::exportVideo);
     top->addWidget(bOpen);
     top->addWidget(bAddV);
     top->addWidget(bAddA);
     top->addStretch();
-    top->addWidget(btnEdit_);
-    top->addWidget(bSet);
     top->addWidget(bExp);
 
     // Transportleiste
@@ -219,14 +219,18 @@ void MainWindow::buildUi() {
         audio_->setVolume(float(masterVol_));
         updateAudio(false);
     });
-    auto* bFs = mk(nullptr, "fullscreen_tip", Ic::Fullscreen);
-    connect(bFs, &QPushButton::clicked, this, &MainWindow::toggleFullscreen);
+    btnEdit_ = mk("edit", nullptr, Ic::Edit, nullptr, " (E)");
+    btnEdit_->setCheckable(true);
+    connect(btnEdit_, &QPushButton::toggled, this, &MainWindow::setEditMode);
+    auto* bSet = mk(nullptr, "settings", Ic::Settings);
+    connect(bSet, &QPushButton::clicked, this, &MainWindow::openSettings);
     bar->addWidget(btnPlay_);
     bar->addWidget(slider_, 1);
     bar->addWidget(lblTime_);
     bar->addWidget(lblVolIcon_);
     bar->addWidget(vol);
-    bar->addWidget(bFs);
+    bar->addWidget(btnEdit_);
+    bar->addWidget(bSet);
 
     // Werkzeuge
     tools_ = new QWidget;
@@ -274,6 +278,22 @@ void MainWindow::buildUi() {
     rootLayout_->addWidget(tools_);
     rootLayout_->addWidget(tlScroll_);
     setCentralWidget(root);
+
+    // Vollbild-Knopf direkt im Video (unten rechts)
+    fsBtn_ = new QPushButton(view_);
+    fsBtn_->setObjectName("vidbtn");
+    fsBtn_->setFocusPolicy(Qt::NoFocus);
+    fsBtn_->setCursor(Qt::PointingHandCursor);
+    fsBtn_->setFixedSize(40, 40);
+    fsBtn_->setIconSize(QSize(18, 18));
+    fsBtn_->setStyleSheet("QPushButton#vidbtn { background: rgba(0,0,0,0.45); border: 1px solid rgba(255,255,255,0.25); border-radius: 10px; }"
+                          "QPushButton#vidbtn:hover { background: rgba(0,0,0,0.7); }");
+    connect(fsBtn_, &QPushButton::clicked, this, &MainWindow::toggleFullscreen);
+    fsHint_ = new QLabel(view_);
+    fsHint_->setAlignment(Qt::AlignCenter);
+    fsHint_->setStyleSheet("color:#ffffff;background:rgba(0,0,0,0.65);border-radius:12px;padding:10px 18px;font-size:15px;font-weight:600;");
+    fsHint_->hide();
+    view_->installEventFilter(this);
 
     lblHint_ = new QLabel(view_);
     lblHint_->setStyleSheet("color:#8b90a0;font-size:17px;background:transparent");
@@ -352,7 +372,40 @@ void MainWindow::retranslate() {
     timeline_->update();
 }
 
+void MainWindow::placeVideoControls() {
+    if (!fsBtn_) return;
+    fsBtn_->setIcon(makeIcon(fullscreen_ ? Ic::ExitFullscreen : Ic::Fullscreen, Qt::white));
+    fsBtn_->setToolTip(T("fullscreen_tip"));
+    fsBtn_->move(view_->width() - fsBtn_->width() - 14, view_->height() - fsBtn_->height() - 14);
+    fsBtn_->raise();
+    if (fsHint_->isVisible()) {
+        fsHint_->adjustSize();
+        fsHint_->move((view_->width() - fsHint_->width()) / 2, 40);
+    }
+}
+
+// Beim Wechsel ins Vollbild kurz zeigen, wie man wieder herauskommt
+void MainWindow::showFullscreenHint() {
+    fsHint_->setText(T("fs_exit_hint"));
+    fsHint_->adjustSize();
+    fsHint_->move((view_->width() - fsHint_->width()) / 2, 40);
+    fsHint_->show();
+    fsHint_->raise();
+    auto* eff = new QGraphicsOpacityEffect(fsHint_);
+    eff->setOpacity(1.0);
+    fsHint_->setGraphicsEffect(eff);
+    auto* anim = new QPropertyAnimation(eff, "opacity", fsHint_);
+    anim->setDuration(700);
+    anim->setStartValue(1.0);
+    anim->setEndValue(0.0);
+    QTimer::singleShot(2800, anim, [this, anim] {
+        connect(anim, &QPropertyAnimation::finished, fsHint_, &QWidget::hide);
+        anim->start(QAbstractAnimation::DeleteWhenStopped);
+    });
+}
+
 bool MainWindow::eventFilter(QObject* o, QEvent* e) {
+    if (o == view_ && e->type() == QEvent::Resize) placeVideoControls();
     if (o == tlScroll_->viewport() && e->type() == QEvent::Resize)
         QTimer::singleShot(0, this, [this] { timeline_->relayout(); });
     return QMainWindow::eventFilter(o, e);
@@ -396,7 +449,7 @@ void MainWindow::setEditMode(bool on) {
 
 void MainWindow::applyLayoutVisibility() {
     const bool edit = btnEdit_->isChecked();
-    topbar_->setVisible(!fullscreen_);
+    topbar_->setVisible(!fullscreen_ && edit);  // obere Leiste nur beim Bearbeiten
     transport_->setVisible(!fullscreen_);
     tools_->setVisible(!fullscreen_ && edit);
     tlScroll_->setVisible(!fullscreen_ && edit);
@@ -421,6 +474,7 @@ void MainWindow::enterFullscreen() {
     showFullScreen();
     for (Overlay* ov : overlays_) { ov->setAcceptedMouseButtons(Qt::NoButton); ov->update(); }
     cursorTimer_->start();
+    QTimer::singleShot(150, this, [this] { placeVideoControls(); showFullscreenHint(); });
 }
 
 void MainWindow::exitFullscreen() {
@@ -431,6 +485,8 @@ void MainWindow::exitFullscreen() {
     wasMaximized_ ? showMaximized() : showNormal();
     applyLayoutVisibility();
     setEditMode(btnEdit_->isChecked());
+    fsHint_->hide();
+    QTimer::singleShot(150, this, [this] { placeVideoControls(); });
 }
 
 // ---------------------------------------------------------------- Datei
@@ -1072,14 +1128,16 @@ void MainWindow::exportVideo() {
     if (pr_.pieces.isEmpty() || exportProc_) return;
     player_->pause();
     ensureProbed();
-    ExportDialog opt(this, pr_.vw, pr_.vh, pr_.sources[0].fps);
+    ExportDialog opt(this, pr_.vw, pr_.vh, pr_.sources[0].fps, pr_.sources[0].path);
     if (opt.exec() != QDialog::Accepted) return;
     ExportOptions eo = opt.options();
-
-    QFileInfo fi(pr_.sources[0].path);
-    QString def = fi.dir().filePath(fi.completeBaseName() + "_edit.mp4");
-    QString out = QFileDialog::getSaveFileName(this, T("export"), def, "MP4 (*.mp4)");
-    if (out.isEmpty()) return;
+    const bool replace = opt.replaceOriginal();
+    const QString original = pr_.sources[0].path;
+    const QString finalPath = opt.outputPath();
+    // Beim Ersetzen erst in eine Zwischendatei schreiben (ffmpeg liest das Original noch)
+    const QString out = replace ? QFileInfo(finalPath).dir().filePath(".cutline-export-" +
+                                  QString::number(QDateTime::currentMSecsSinceEpoch()) + ".mp4")
+                                : finalPath;
 
     QStringList args = buildExport(pr_, eo, out);
     const double total = pr_.total();
@@ -1105,15 +1163,38 @@ void MainWindow::exportVideo() {
     connect(proc, &QProcess::readyReadStandardError, this,
             [proc, errText] { *errText += QString::fromUtf8(proc->readAllStandardError()); });
     connect(dlg, &QProgressDialog::canceled, proc, [proc] { proc->kill(); });
-    connect(proc, &QProcess::finished, this, [this, proc, dlg, out, errText](int code, QProcess::ExitStatus st) {
+    connect(proc, &QProcess::finished, this, [this, proc, dlg, out, errText, replace, original, finalPath](int code, QProcess::ExitStatus st) {
         bool cancelled = st == QProcess::CrashExit;
         dlg->close();
         dlg->deleteLater();
         exportProc_ = nullptr;
         proc->deleteLater();
-        if (cancelled) return;
-        if (code == 0) QMessageBox::information(this, T("done"), T("saved") + "\n" + out);
-        else QMessageBox::critical(this, T("export_fail"), errText->right(1500));
+        if (cancelled || code != 0) {
+            if (replace) QFile::remove(out);
+            if (!cancelled) QMessageBox::critical(this, T("export_fail"), errText->right(1500));
+            return;
+        }
+        QString saved = out;
+        if (replace) {
+            // Datei freigeben, Original ersetzen, Ergebnis öffnen
+            player_->stop();
+            player_->setSource(QUrl());
+            for (auto& [id, ap] : audioPlayers_) ap.p->setSource(QUrl());
+            QApplication::processEvents();
+            thumbSets_.erase(original);
+            thumbSets_.erase(finalPath);
+            bool ok = true;
+            if (QFileInfo::exists(finalPath) && !QFile::remove(finalPath)) ok = false;
+            if (ok && original != finalPath) QFile::remove(original);
+            if (ok) ok = QFile::rename(out, finalPath);
+            if (!ok) {
+                QMessageBox::critical(this, T("export_fail"), QDir::toNativeSeparators(out));
+                return;
+            }
+            saved = finalPath;
+            openFile(finalPath);
+        }
+        QMessageBox::information(this, T("done"), T("saved") + "\n" + QDir::toNativeSeparators(saved));
     });
     proc->start(ffmpegPath(), args);
 }
@@ -1155,7 +1236,7 @@ void MainWindow::selfShots(const QString& dir) {
         SettingsDialog d(this);
         QTimer::singleShot(300, &d, [&d, dir] { d.grab().save(dir + "/f_settings.png"); d.accept(); });
         d.exec();
-        ExportDialog e(this, pr_.vw, pr_.vh, 30.0);
+        ExportDialog e(this, pr_.vw, pr_.vh, 30.0, pr_.sources.isEmpty() ? QString() : pr_.sources[0].path);
         QTimer::singleShot(300, &e, [&e, dir] { e.grab().save(dir + "/g_export.png"); e.accept(); });
         e.exec();
     });
