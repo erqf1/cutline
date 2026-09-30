@@ -38,8 +38,8 @@ Name: "desktopicon"; Description: "Create a &desktop shortcut"; GroupDescription
 Source: "..\..\dist\Cutline\*"; DestDir: "{app}"; Flags: recursesubdirs ignoreversion
 
 [Icons]
-Name: "{autoprograms}\Cutline"; Filename: "{app}\Cutline.exe"
-Name: "{autodesktop}\Cutline"; Filename: "{app}\Cutline.exe"; Tasks: desktopicon
+Name: "{autoprograms}\Cutline"; Filename: "{app}\Cutline.exe"; AppUserModelID: "WSoftware.Cutline"
+Name: "{autodesktop}\Cutline"; Filename: "{app}\Cutline.exe"; AppUserModelID: "WSoftware.Cutline"; Tasks: desktopicon
 
 [Run]
 Filename: "{app}\Cutline.exe"; Description: "Start Cutline"; Flags: nowait postinstall skipifsilent

@@ -1,3 +1,8 @@
+#include <QtGlobal>
+#ifdef Q_OS_WIN
+#include <windows.h>
+#include <shobjidl.h>
+#endif
 #include <QApplication>
 #include <QFileOpenEvent>
 #include <QGuiApplication>
@@ -28,6 +33,10 @@ protected:
 };
 
 int main(int argc, char* argv[]) {
+#ifdef Q_OS_WIN
+    // Eigene App-ID: eigener Taskleisten-Button, nicht mit anderen Programmen gruppiert
+    SetCurrentProcessExplicitAppUserModelID(L"WSoftware.Cutline");
+#endif
     App app(argc, argv);
     QCoreApplication::setOrganizationName("WSoftware");
     QCoreApplication::setApplicationName("VideoEditor");
