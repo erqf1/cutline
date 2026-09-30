@@ -15,6 +15,10 @@ static QList<Theme> makeThemes() {
     return {
         mk("mint", "Mint", "#0d0f14", "#151821", "#1c202b", "#2a2f3d", "#e6e8ee", "#8b90a0", "#4ade9b", "#04231a",
            "#0a0c11", "#000000"),
+        // Studio: schlicht, dunkelgrau mit Türkis – wie bekannte Schnittprogramme
+        mk("studio", "Studio", "#161616", "#202020", "#2a2a2a", "#333333", "#e8e8e8", "#8c8c8c", "#1fc8d4", "#062326",
+           "#1a1a1a", "#000000", "'Segoe UI','SF Pro Text','Helvetica Neue','Ubuntu','Noto Sans','DejaVu Sans',sans-serif",
+           12, 6),
         mk("ocean", "Ocean", "#0a101d", "#101a2e", "#16233c", "#263557", "#e3ecff", "#8fa3c7", "#4aa3ff", "#04101f",
            "#08101c", "#000000"),
         mk("violet", "Violett", "#100c1b", "#181227", "#221a36", "#392c59", "#efe9ff", "#9d8fc0", "#a78bfa", "#140a2e",

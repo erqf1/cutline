@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(Cutline VERSION 1.3.1 LANGUAGES CXX)
+project(Cutline VERSION 1.4.0 LANGUAGES CXX)
 if(WIN32)
     enable_language(RC)
 endif()
@@ -7,6 +7,7 @@ endif()
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
+set(CMAKE_AUTORCC ON)
 
 find_package(Qt6 REQUIRED COMPONENTS Widgets Multimedia MultimediaWidgets Network)
 
@@ -33,6 +34,9 @@ set(CUTLINE_SOURCES
     src/mainwindow.cpp
     src/updater.h
     src/updater.cpp
+    src/textrender.h
+    src/textrender.cpp
+    assets/fonts.qrc
 )
 
 if(WIN32)

@@ -1,0 +1,12 @@
+<RCC>
+  <qresource prefix="/fonts">
+    <file alias="Anton-Regular.ttf">fonts/Anton-Regular.ttf</file>
+    <file alias="Bangers-Regular.ttf">fonts/Bangers-Regular.ttf</file>
+    <file alias="BebasNeue-Regular.ttf">fonts/BebasNeue-Regular.ttf</file>
+    <file alias="Creepster-Regular.ttf">fonts/Creepster-Regular.ttf</file>
+    <file alias="Lobster-Regular.ttf">fonts/Lobster-Regular.ttf</file>
+    <file alias="Pacifico-Regular.ttf">fonts/Pacifico-Regular.ttf</file>
+    <file alias="PermanentMarker-Regular.ttf">fonts/PermanentMarker-Regular.ttf</file>
+    <file alias="PressStart2P-Regular.ttf">fonts/PressStart2P-Regular.ttf</file>
+  </qresource>
+</RCC>

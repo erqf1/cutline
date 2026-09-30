@@ -20,5 +20,6 @@ QString buildStyleSheet(const Theme& t);
 // Feste Farben für Timeline-Elemente (in jedem Theme gut lesbar)
 inline QColor blurColor() { return QColor("#e8912d"); }
 inline QColor imageColor() { return QColor("#4a90e2"); }
+inline QColor textItemColor() { return QColor("#d9488f"); }
 inline QColor audioColor() { return QColor("#9b6be0"); }
 inline QColor playheadColor() { return QColor("#ff5d5d"); }

@@ -12,6 +12,7 @@
 #include "i18n.h"
 #include "icons.h"
 #include "mainwindow.h"
+#include "textrender.h"
 #include "theme.h"
 
 // macOS liefert "Oeffnen mit"/Doppelklick als QFileOpenEvent statt als Argument
@@ -38,6 +39,7 @@ int main(int argc, char* argv[]) {
     SetCurrentProcessExplicitAppUserModelID(L"WSoftware.Cutline");
 #endif
     App app(argc, argv);
+    registerSpecialFonts();
     QCoreApplication::setOrganizationName("WSoftware");
     QCoreApplication::setApplicationName("VideoEditor");
     QGuiApplication::setApplicationDisplayName("Cutline");

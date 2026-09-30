@@ -14,6 +14,10 @@
 #include <QScrollArea>
 #include <QSlider>
 #include <QStackedWidget>
+#include <QListWidget>
+#include <QPlainTextEdit>
+#include <QComboBox>
+#include <QCheckBox>
 #include <QTemporaryDir>
 #include <QTimer>
 #include <QVideoFrame>
@@ -76,6 +80,8 @@ public:
     double viewScale() const override { return view_->transform().m11(); }
     int timelineViewportWidth() const override { return tlScroll_->viewport()->width(); }
     const ThumbSet* thumbs(int srcIndex) const override;
+    const WaveSet* waves(const QString& path) const override;
+    void timelineZoomed() override;
     QImage frameImage() override;
     QRectF videoRect() const override { return QRectF(vitem_->pos(), vitem_->size()); }
     bool showGuides() const override { return !fullscreen_ && btnEdit_->isChecked(); }
@@ -151,7 +157,18 @@ private:
     void newItem(Item it);
     void addBlur();
     void addImage();
-    void addMedia();
+    // Medien-Sammlung (rechts) und Einfügen
+    QWidget* buildMediaPage();
+    void importMedia();
+    void addToBin(const QString& path);
+    void insertFromBin(const QString& path);
+    void addImageFile(const QString& path);
+    void addText();
+    // Bild anpassen (Größe/Position/Drehung) und Wellenformen
+    void editPieceTf(const std::function<void(Piece&)>& fn);
+    void applyVideoTransform();
+    void startWaves(const QString& path);
+    void pickItemColor(bool background);
     void addVideoFile(const QString& f, const MediaInfo& mi);
     void addAudioFile(const QString& f, const MediaInfo& mi);
     void setPieceVolume(int v);
@@ -198,7 +215,27 @@ private:
 
     // UI
     std::vector<BtnSpec> btns_;
-    QPushButton *btnPlay_, *btnEdit_, *btnAddMedia_, *fsBtn_ = nullptr;
+    QPushButton *btnPlay_, *btnEdit_, *fsBtn_ = nullptr;
+    QPushButton *tabMedia_, *tabProps_;
+    QStackedWidget* rightStack_;
+    QListWidget* bin_;
+    QLabel* lblBinHint_;
+    std::unique_ptr<QTemporaryDir> binDir_;
+    QString lastSel_;
+    // Bild anpassen
+    QLabel *lblSize_, *lblPos_, *lblRot_;
+    QSlider* sliderScale_;
+    QDoubleSpinBox *spScale_, *spPosX_, *spPosY_, *spRot_;
+    QPushButton* btnResetTf_;
+    // Text
+    QWidget* textBox_;
+    QPlainTextEdit* textEdit_;
+    QComboBox* fontBox_;
+    QCheckBox* chkBg_;
+    QPushButton *btnColor_, *btnBgColor_;
+    QLabel *lblFont_, *lblColors_;
+    bool textUndo_ = false;
+    std::map<QString, std::shared_ptr<WaveSet>> waves_;
     QLabel* fsHint_ = nullptr;
     QLabel* scrubPrev_ = nullptr;  // Vorschaubild über der Zeitleiste beim Ziehen
     QSlider *slider_, *sliderStr_;

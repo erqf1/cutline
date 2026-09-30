@@ -97,6 +97,17 @@ ExportDialog::ExportDialog(QWidget* parent, int srcW, int srcH, double srcFps, c
     auto* form = new QFormLayout;
     form->setSpacing(12);
 
+    // Format: Video, GIF oder nur Ton
+    format_ = new QComboBox;
+    format_->addItem("MP4 (H.264)", "mp4");
+    format_->addItem("MOV", "mov");
+    format_->addItem("MKV", "mkv");
+    format_->addItem("GIF", "gif");
+    format_->addItem("MP3 – " + T("audio_only"), "mp3");
+    format_->addItem("WAV – " + T("audio_only"), "wav");
+    format_->addItem("M4A (AAC) – " + T("audio_only"), "m4a");
+    form->addRow(T("format"), format_);
+
     res_ = new QComboBox;
     res_->addItem(QString("%1 (%2×%3)").arg(T("original")).arg(srcW).arg(srcH), srcH);
     struct R { int h; const char* name; };
@@ -136,7 +147,8 @@ ExportDialog::ExportDialog(QWidget* parent, int srcW, int srcH, double srcFps, c
     name_ = new QLineEdit(src.completeBaseName() + "_edit");
     auto* nameRow = new QHBoxLayout;
     nameRow->addWidget(name_, 1);
-    nameRow->addWidget(new QLabel(".mp4"));
+    ext_ = new QLabel(".mp4");
+    nameRow->addWidget(ext_);
     form2->addRow(T("file_name"), nameRow);
     folder_ = new QLineEdit(QDir::toNativeSeparators(src.absolutePath()));
     browse_ = new QPushButton(T("browse"));
@@ -168,6 +180,20 @@ ExportDialog::ExportDialog(QWidget* parent, int srcW, int srcH, double srcFps, c
         rhint->setVisible(on);
     });
 
+    // Bei "nur Ton" gibt es keine Bild-Einstellungen; Original ersetzen nur bei Video-Formaten
+    connect(format_, &QComboBox::currentIndexChanged, this, [this, form] {
+        const QString f = format_->currentData().toString();
+        const bool audio = isAudioFormat(f);
+        form->setRowVisible(res_, !audio);
+        form->setRowVisible(fps_, !audio && f != "gif");
+        form->setRowVisible(quality_, f != "gif" && f != "wav");
+        ext_->setText("." + f);
+        const bool video = f == "mp4" || f == "mov" || f == "mkv";
+        if (!video) replace_->setChecked(false);
+        replace_->setEnabled(video);
+        adjustSize();
+    });
+
     auto* row = new QHBoxLayout;
     auto* cancel = new QPushButton(T("cancel"));
     auto* ok = new QPushButton(T("export"));
@@ -190,15 +216,18 @@ ExportOptions ExportDialog::options() const {
     o.height = std::max(2, h);
     o.fps = fps_->currentData().toDouble();
     o.quality = quality_->currentData().toInt();
-    o.encoder = detectEncoder();
+    o.format = format_->currentData().toString();
+    o.encoder = (o.format == "gif" || isAudioFormat(o.format)) ? QString("libx264") : detectEncoder();
     return o;
 }
 
 QString ExportDialog::outputPath() const {
     QString n = name_->text().trimmed();
-    if (n.endsWith(".mp4", Qt::CaseInsensitive)) n.chop(4);
-    return QDir(QDir::fromNativeSeparators(folder_->text().trimmed())).filePath(n + ".mp4");
+    if (n.endsWith(ext(), Qt::CaseInsensitive)) n.chop(ext().size());
+    return QDir(QDir::fromNativeSeparators(folder_->text().trimmed())).filePath(n + ext());
 }
+
+QString ExportDialog::ext() const { return "." + format_->currentData().toString(); }
 
 bool ExportDialog::replaceOriginal() const { return replace_->isChecked(); }
 

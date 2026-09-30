@@ -3,6 +3,7 @@
 #include <QFont>
 #include <QGraphicsSceneMouseEvent>
 #include <QPainter>
+#include "textrender.h"
 #include "theme.h"
 
 Overlay::Overlay(int itemId, EditorHost* host) : id_(itemId), host_(host) {
@@ -48,8 +49,20 @@ void Overlay::paint(QPainter* p, const QStyleOptionGraphicsItem*, QWidget*) {
     const double sc = std::max(0.01, host_->viewScale());
     const QRectF r(0, 0, w_, h_);
     const bool sel = host_->selItem() == id_;
-    if (!pm_.isNull()) p->drawPixmap(r, pm_, QRectF(pm_.rect()));
-    else paintBlur(p);
+    Item* it = host_->pr().item(id_);
+    if (it && it->kind == Item::Text) {
+        // Text in der echten Pixelgröße des Rahmens rendern (wie im Export), nur bei Änderungen neu
+        const QSize px(std::max(2, int(w_)), std::max(2, int(h_)));
+        const QString key = QString("%1|%2|%3|%4|%5|%6x%7").arg(it->text, it->font).arg(it->color).arg(it->bg)
+                                .arg(it->bgColor).arg(px.width()).arg(px.height());
+        if (key != textKey_) { textImg_ = renderTextImage(*it, px); textKey_ = key; }
+        p->setRenderHint(QPainter::SmoothPixmapTransform, true);
+        p->drawImage(r, textImg_);
+    } else if (!pm_.isNull()) {
+        p->drawPixmap(r, pm_, QRectF(pm_.rect()));
+    } else {
+        paintBlur(p);
+    }
 
     if (!host_->showGuides()) return;
     QPen pen(sel ? th.accent : QColor(255, 255, 255, 170), (sel ? 2.5 : 1.5) / sc);

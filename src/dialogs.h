@@ -49,7 +49,9 @@ public:
 private:
     int srcW_, srcH_;
     QString source_;
-    QComboBox *res_, *fps_, *quality_;
+    QString ext() const;
+    QComboBox *format_, *res_, *fps_, *quality_;
+    QLabel* ext_;
     QLineEdit *name_, *folder_;
     QPushButton* browse_;
     QCheckBox* replace_;

@@ -18,11 +18,16 @@ struct Piece {
     int src = 0;
     double start = 0, end = 0, speed = 1.0;
     double volume = 1.0;  // Lautstärke des Video-Tons in diesem Abschnitt (0..2)
+    // Bild anpassen: Größe (1 = eingepasst), Verschiebung als Anteil der Bildfläche, Drehung in Grad
+    double scale = 1.0, px = 0, py = 0, rot = 0;
     double outDur() const { return (end - start) / speed; }
+    bool transformed() const {
+        return std::abs(scale - 1) > 1e-4 || std::abs(px) > 1e-4 || std::abs(py) > 1e-4 || std::abs(rot) > 1e-3;
+    }
 };
 
 struct Item {
-    enum Kind { Image, Blur };
+    enum Kind { Image, Blur, Text };
     int id = 0;
     Kind kind = Blur;
     double t0 = 0, t1 = 0;              // Ausgabezeit
@@ -30,6 +35,10 @@ struct Item {
     QString path;
     double strength = 30.0;             // Blur-Sigma (bei 1080p)
     double ar = 1.0;                    // Seitenverhältnis h/w (Bild)
+    // Text: Inhalt, Schriftart, Farbe (ARGB), optional Hintergrund
+    QString text, font;
+    unsigned color = 0xffffffffu, bgColor = 0xcc000000u;
+    bool bg = false;
 };
 
 struct AudioClip {
@@ -113,6 +122,9 @@ struct ExportOptions {
     double fps = 30;
     int quality = 1;  // 0 hoch, 1 ausgewogen, 2 klein
     QString encoder = "libx264";
+    QString format = "mp4";  // mp4 mov mkv gif | mp3 wav m4a (nur Ton)
 };
+
+bool isAudioFormat(const QString& format);
 
 QStringList buildExport(const Project& pr, const ExportOptions& o, const QString& out);

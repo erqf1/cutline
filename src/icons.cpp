@@ -47,6 +47,22 @@ QIcon makeIcon(Ic id, const QColor& c) {
         p.drawLine(41, 24, 81, 18);
         break;
     }
+    case Ic::ZoomIn:
+    case Ic::ZoomOut: {
+        p.drawEllipse(QPointF(42, 42), 26, 26);
+        p.drawLine(62, 62, 88, 88);
+        p.drawLine(30, 42, 54, 42);
+        if (id == Ic::ZoomIn) p.drawLine(42, 30, 42, 54);
+        break;
+    }
+    case Ic::Text: {
+        p.drawLine(18, 22, 82, 22);
+        p.drawLine(18, 22, 18, 32);
+        p.drawLine(82, 22, 82, 32);
+        p.drawLine(50, 22, 50, 82);
+        p.drawLine(38, 82, 62, 82);
+        break;
+    }
     case Ic::Edit: {
         p.drawLine(24, 76, 34, 52);
         p.drawLine(34, 52, 68, 18);

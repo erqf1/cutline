@@ -4,10 +4,14 @@ A simple, fast video editor. Open an mp4 or mov, cut it, change the speed of par
 
 - **Also a good video player.** Make it your default app for mp4/mov/mkv: instant start, fullscreen, click to pause, 5-second skip, ambient light around the video.
 - **Opens instantly.** No import step, no project setup. Drag a video in and it plays.
-- **Edit mode with a timeline.** Trim, split, remove segments, per-segment speed, image overlays, blur areas (the blur is real, also in the preview), extra videos and a sound track lane.
-- **Sensible export.** Pick resolution (4K … SD), frame rate and quality. Only values up to the original are offered, so you never waste disk space.
+- **Edit mode with a timeline.** Drag segment edges to trim, split only what is selected (or everything at the playhead), per-segment speed, zoom in/out.
+- **Volume like in the big editors.** Waveforms on every clip; drag the volume line up or down and see the level in dB.
+- **Resize, move and rotate** each segment, add **text** (bundled display fonts or any installed font, with or without background), image overlays and real blur areas.
+- **Media panel.** Everything you import sits on the right; double-click to insert it at the playhead.
+- **Sensible export.** MP4, MOV, MKV, GIF or audio only (MP3, WAV, M4A). Pick resolution (4K … SD), frame rate and quality – only values up to the original are offered.
+- **Checks for updates** and installs them on request (or ignore a version).
 - **Fullscreen** with `F11`, click the video to pause, arrow keys jump 5 seconds.
-- **12 languages** and several themes (including a full Windows XP Luna look).
+- **12 languages** and several themes (including a clean "Studio" look and a full Windows XP Luna look).
 - Uses your GPU encoder when available (NVENC, Quick Sync, AMF, VideoToolbox), otherwise x264.
 
 ## Download
@@ -59,3 +63,5 @@ On Windows, `build.bat` builds and creates the portable zip. Release packages fo
 ## License
 
 Apache License 2.0 for the Cutline source code. Release packages bundle [FFmpeg](https://ffmpeg.org) (GPL build) and [Qt](https://www.qt.io) (LGPLv3), which keep their own licenses.
+
+Bundled fonts from Google Fonts: Anton, Bangers, Bebas Neue, Creepster, Lobster, Pacifico, Press Start 2P (SIL Open Font License 1.1) and Permanent Marker (Apache License 2.0).

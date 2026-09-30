@@ -1,6 +1,10 @@
 #include "mainwindow.h"
 
 #include <QAction>
+#include <QButtonGroup>
+#include <QColorDialog>
+#include <QFontDatabase>
+#include <QScrollBar>
 #include <QAudioDevice>
 #include <QMediaDevices>
 #include <QDateTime>
@@ -23,6 +27,7 @@
 #include <QVideoSink>
 #include "dialogs.h"
 #include "i18n.h"
+#include "textrender.h"
 #include "theme.h"
 
 static constexpr double kMinPiece = 0.1;
@@ -156,6 +161,76 @@ QWidget* MainWindow::buildInspector() {
     connect(sliderPieceVol_, &QSlider::sliderPressed, this, &MainWindow::pushUndo);
     connect(sliderPieceVol_, &QSlider::valueChanged, this, &MainWindow::setPieceVolume);
     v->addWidget(sliderPieceVol_);
+
+    // Bild anpassen: Größe, Position, Drehung (wie in gängigen Schnittprogrammen)
+    auto spin = [](double lo, double hi, int dec, const QString& suffix) {
+        auto* sp = new QDoubleSpinBox;
+        sp->setRange(lo, hi);
+        sp->setDecimals(dec);
+        sp->setSuffix(suffix);
+        sp->setButtonSymbols(QAbstractSpinBox::NoButtons);
+        sp->setFixedWidth(78);
+        return sp;
+    };
+    lblSize_ = new QLabel;
+    v->addWidget(lblSize_);
+    auto* srow = new QHBoxLayout;
+    sliderScale_ = new QSlider(Qt::Horizontal);
+    sliderScale_->setRange(10, 400);
+    sliderScale_->setFocusPolicy(Qt::NoFocus);
+    spScale_ = spin(10, 400, 0, " %");
+    connect(sliderScale_, &QSlider::sliderPressed, this, &MainWindow::pushUndo);
+    connect(sliderScale_, &QSlider::valueChanged, this, [this](int val) {
+        if (!sliderScale_->isSliderDown()) pushUndo();
+        QSignalBlocker b(spScale_);
+        spScale_->setValue(val);
+        editPieceTf([val](Piece& p) { p.scale = val / 100.0; });
+    });
+    connect(spScale_, &QDoubleSpinBox::editingFinished, this, [this] {
+        pushUndo();
+        const double val = spScale_->value();
+        { QSignalBlocker b(sliderScale_); sliderScale_->setValue(qRound(val)); }
+        editPieceTf([val](Piece& p) { p.scale = val / 100.0; });
+    });
+    srow->addWidget(sliderScale_, 1);
+    srow->addWidget(spScale_);
+    v->addLayout(srow);
+    lblPos_ = new QLabel;
+    v->addWidget(lblPos_);
+    auto* prow = new QHBoxLayout;
+    spPosX_ = spin(-200, 200, 1, " %");
+    spPosY_ = spin(-200, 200, 1, " %");
+    for (auto [sp, axis] : {std::pair{spPosX_, 'x'}, std::pair{spPosY_, 'y'}}) {
+        prow->addWidget(new QLabel(axis == 'x' ? "X" : "Y"));
+        prow->addWidget(sp);
+        connect(sp, &QDoubleSpinBox::editingFinished, this, [this, sp = sp, axis = axis] {
+            pushUndo();
+            const double val = sp->value() / 100.0;
+            editPieceTf([val, axis](Piece& p) { (axis == 'x' ? p.px : p.py) = val; });
+        });
+    }
+    prow->addStretch();
+    v->addLayout(prow);
+    lblRot_ = new QLabel;
+    v->addWidget(lblRot_);
+    auto* rrow = new QHBoxLayout;
+    spRot_ = spin(-360, 360, 1, " °");
+    connect(spRot_, &QDoubleSpinBox::editingFinished, this, [this] {
+        pushUndo();
+        const double val = spRot_->value();
+        editPieceTf([val](Piece& p) { p.rot = val; });
+    });
+    rrow->addWidget(spRot_);
+    rrow->addStretch();
+    btnResetTf_ = new QPushButton;
+    btnResetTf_->setFocusPolicy(Qt::NoFocus);
+    connect(btnResetTf_, &QPushButton::clicked, this, [this] {
+        pushUndo();
+        editPieceTf([](Piece& p) { p.scale = 1; p.px = p.py = p.rot = 0; });
+        refreshInspector();
+    });
+    rrow->addWidget(btnResetTf_);
+    v->addLayout(rrow);
     lblPiece_ = new QLabel;
     lblPiece_->setObjectName("hint");
     lblPiece_->setWordWrap(true);
@@ -192,6 +267,62 @@ QWidget* MainWindow::buildInspector() {
     connect(sliderStr_, &QSlider::sliderPressed, this, &MainWindow::pushUndo);
     connect(sliderStr_, &QSlider::valueChanged, this, &MainWindow::sliderChanged);
     v->addWidget(sliderStr_);
+
+    textBox_ = new QWidget;
+    auto* tv = new QVBoxLayout(textBox_);
+    tv->setContentsMargins(0, 0, 0, 0);
+    tv->setSpacing(8);
+    textEdit_ = new QPlainTextEdit;
+    textEdit_->setFixedHeight(64);
+    connect(textEdit_, &QPlainTextEdit::textChanged, this, [this] {
+        Item* it = pr_.item(selItem_);
+        if (!it || it->kind != Item::Text || it->text == textEdit_->toPlainText()) return;
+        if (!textUndo_) { pushUndo(); textUndo_ = true; }
+        it->text = textEdit_->toPlainText();
+        for (Overlay* ov : overlays_) ov->update();
+        timeline_->update();
+    });
+    tv->addWidget(textEdit_);
+    lblFont_ = new QLabel;
+    tv->addWidget(lblFont_);
+    fontBox_ = new QComboBox;
+    fontBox_->setMaxVisibleItems(16);
+    for (const QString& f : specialFonts()) fontBox_->addItem("★ " + f, f);
+    fontBox_->insertSeparator(fontBox_->count());
+    for (const QString& f : QFontDatabase::families())
+        if (!specialFonts().contains(f) && !f.startsWith('@')) fontBox_->addItem(f, f);
+    connect(fontBox_, &QComboBox::activated, this, [this] {
+        Item* it = pr_.item(selItem_);
+        if (!it || it->kind != Item::Text) return;
+        pushUndo();
+        it->font = fontBox_->currentData().toString();
+        for (Overlay* ov : overlays_) ov->update();
+    });
+    tv->addWidget(fontBox_);
+    lblColors_ = new QLabel;
+    tv->addWidget(lblColors_);
+    auto* crow = new QHBoxLayout;
+    btnColor_ = new QPushButton;
+    btnBgColor_ = new QPushButton;
+    chkBg_ = new QCheckBox;
+    for (QPushButton* b : {btnColor_, btnBgColor_}) { b->setFixedSize(34, 26); b->setFocusPolicy(Qt::NoFocus); }
+    connect(btnColor_, &QPushButton::clicked, this, [this] { pickItemColor(false); });
+    connect(btnBgColor_, &QPushButton::clicked, this, [this] { pickItemColor(true); });
+    connect(chkBg_, &QCheckBox::toggled, this, [this](bool on) {
+        Item* it = pr_.item(selItem_);
+        if (!it || it->kind != Item::Text || it->bg == on) return;
+        pushUndo();
+        it->bg = on;
+        btnBgColor_->setEnabled(on);
+        for (Overlay* ov : overlays_) ov->update();
+    });
+    crow->addWidget(btnColor_);
+    crow->addSpacing(10);
+    crow->addWidget(chkBg_);
+    crow->addWidget(btnBgColor_);
+    crow->addStretch();
+    tv->addLayout(crow);
+    v->addWidget(textBox_);
     btnDelEl_ = mk("delete_el", nullptr, Ic::Trash);
     connect(btnDelEl_, &QPushButton::clicked, this, &MainWindow::deleteSelected);
     v->addWidget(btnDelEl_);
@@ -200,10 +331,37 @@ QWidget* MainWindow::buildInspector() {
 
     inspCard_ = new QFrame;
     inspCard_->setObjectName("card");
-    inspCard_->setFixedWidth(260);
+    inspCard_->setFixedWidth(300);
     auto* cl = new QVBoxLayout(inspCard_);
-    cl->setContentsMargins(14, 14, 14, 14);
-    cl->addWidget(insp_);
+    cl->setContentsMargins(12, 12, 12, 12);
+    cl->setSpacing(10);
+    auto* tabs = new QHBoxLayout;
+    tabs->setSpacing(6);
+    tabMedia_ = mk("media", nullptr, Ic::AddVideo);
+    tabProps_ = mk("properties", nullptr, Ic::Edit);
+    auto* grp = new QButtonGroup(inspCard_);
+    for (QPushButton* b : {tabMedia_, tabProps_}) {
+        b->setCheckable(true);
+        grp->addButton(b);
+        tabs->addWidget(b, 1);
+    }
+    tabMedia_->setChecked(true);
+    cl->addLayout(tabs);
+    rightStack_ = new QStackedWidget;
+    rightStack_->addWidget(buildMediaPage());
+    // Eigenschaften scrollen, wenn sie nicht ganz hineinpassen
+    auto* inspScroll = new QScrollArea;
+    inspScroll->setObjectName("plain");
+    inspScroll->setWidget(insp_);
+    inspScroll->setWidgetResizable(true);
+    inspScroll->setFrameShape(QFrame::NoFrame);
+    inspScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    inspScroll->setStyleSheet("QScrollArea#plain { border: none; background: transparent; }"
+                              "QScrollArea#plain > QWidget > QWidget { background: transparent; }");
+    rightStack_->addWidget(inspScroll);
+    cl->addWidget(rightStack_, 1);
+    connect(tabMedia_, &QPushButton::clicked, this, [this] { rightStack_->setCurrentIndex(0); });
+    connect(tabProps_, &QPushButton::clicked, this, [this] { rightStack_->setCurrentIndex(1); });
     return inspCard_;
 }
 
@@ -214,12 +372,10 @@ void MainWindow::buildUi() {
     audio_->setVolume(float(masterVol_));
     player_->setAudioOutput(audio_);
     scene_ = new QGraphicsScene(this);
-    canvasBg_ = scene_->addRect(0, 0, 1920, 1080, Qt::NoPen, Qt::black);
-    canvasBg_->setVisible(false);  // erst mit geladenem Video (sonst sieht man den leeren Hintergrund)
+    canvasBg_ = scene_->addRect(0, 0, 1920, 1080, Qt::NoPen, Qt::NoBrush);  // schwarz erst mit geladenem Video
     canvasBg_->setZValue(-1);
-    vitem_ = new QGraphicsVideoItem;
-    vitem_->setZValue(0);
-    scene_->addItem(vitem_);
+    canvasBg_->setFlag(QGraphicsItem::ItemClipsChildrenToShape);  // verschobenes/vergrößertes Video bleibt im Bild
+    vitem_ = new QGraphicsVideoItem(canvasBg_);
     player_->setVideoOutput(vitem_);
     view_ = new VideoView(scene_);
     connect(vitem_, &QGraphicsVideoItem::nativeSizeChanged, this, &MainWindow::onNativeSize);
@@ -285,8 +441,6 @@ void MainWindow::buildUi() {
         seek(scrubTarget_);
     });
     lblTime_ = new QLabel("00:00.0 / 00:00.0");
-    btnAddMedia_ = mk("add_media", "add_media_tip", Ic::AddVideo);
-    connect(btnAddMedia_, &QPushButton::clicked, this, &MainWindow::addMedia);
     btnEdit_ = mk("edit", nullptr, Ic::Edit, nullptr, " (E)");
     btnEdit_->setCheckable(true);
     connect(btnEdit_, &QPushButton::toggled, this, &MainWindow::setEditMode);
@@ -295,7 +449,6 @@ void MainWindow::buildUi() {
     bar->addWidget(btnPlay_);
     bar->addWidget(slider_, 1);
     bar->addWidget(lblTime_);
-    bar->addWidget(btnAddMedia_);
     bar->addWidget(btnEdit_);
     bar->addWidget(bSet);
 
@@ -312,6 +465,7 @@ void MainWindow::buildUi() {
         {"trim_end", nullptr, Ic::TrimEnd, " (W)", &MainWindow::doTrimEnd},
         {"blur", nullptr, Ic::Blur, " (B)", &MainWindow::addBlur},
         {"image", nullptr, Ic::Image, " (I)", &MainWindow::addImage},
+        {"text", nullptr, Ic::Text, " (T)", &MainWindow::addText},
         {nullptr, "undo", Ic::Undo, "", &MainWindow::doUndo},
         {nullptr, "redo", Ic::Redo, "", &MainWindow::doRedo},
     };
@@ -321,6 +475,12 @@ void MainWindow::buildUi() {
         tl->addWidget(b);
     }
     tl->addStretch();
+    auto* zOut = mk(nullptr, "zoom_out", Ic::ZoomOut, "tool", " (Ctrl + −)");
+    auto* zIn = mk(nullptr, "zoom_in", Ic::ZoomIn, "tool", " (Ctrl + +)");
+    connect(zOut, &QPushButton::clicked, this, [this] { timeline_->zoomBy(1 / 1.6); });
+    connect(zIn, &QPushButton::clicked, this, [this] { timeline_->zoomBy(1.6); });
+    tl->addWidget(zOut);
+    tl->addWidget(zIn);
 
     // Timeline
     timeline_ = new Timeline(this);
@@ -381,6 +541,10 @@ void MainWindow::buildUi() {
     addShortcut(Qt::Key_W, [this] { doTrimEnd(); });
     addShortcut(Qt::Key_B, [this] { addBlur(); });
     addShortcut(Qt::Key_I, [this] { addImage(); });
+    addShortcut(Qt::Key_T, [this] { addText(); });
+    addShortcut(QKeySequence("Ctrl++"), [this] { timeline_->zoomBy(1.6); });
+    addShortcut(QKeySequence("Ctrl+="), [this] { timeline_->zoomBy(1.6); });
+    addShortcut(QKeySequence("Ctrl+-"), [this] { timeline_->zoomBy(1 / 1.6); });
     addShortcut(QKeySequence("Ctrl+Z"), [this] { doUndo(); });
     addShortcut(QKeySequence("Ctrl+Y"), [this] { doRedo(); });
     addShortcut(QKeySequence("Ctrl+Shift+Z"), [this] { doRedo(); });
@@ -438,6 +602,15 @@ void MainWindow::retranslate() {
     lblStart_->setText(T("start_s"));
     lblEnd_->setText(T("end_s"));
     lblPieceVol_->setText(T("volume"));
+    lblSize_->setText(T("size"));
+    lblPos_->setText(T("position"));
+    lblRot_->setText(T("rotation"));
+    btnResetTf_->setText(T("reset"));
+    lblFont_->setText(T("font"));
+    lblColors_->setText(T("color"));
+    chkBg_->setText(T("background"));
+    lblBinHint_->setText(bin_->count() ? T("bin_hint") : T("bin_empty"));
+    textEdit_->setPlaceholderText(T("text_ph"));
     lblHint_->move((view_->width() - lblHint_->width()) / 2, view_->height() / 2 - 10);
     refreshInspector();
     timeline_->update();
@@ -501,13 +674,20 @@ void MainWindow::fitView() {
 }
 
 // Video (evtl. mit anderer Größe als die Bildfläche) mittig einpassen
-void MainWindow::fitVideoItem() {
+void MainWindow::fitVideoItem() { applyVideoTransform(); }
+
+// Eingepasst, dann Größe / Verschiebung / Drehung des gerade laufenden Abschnitts
+void MainWindow::applyVideoTransform() {
     QSizeF s = vitem_->nativeSize();
     if (!s.isValid() || s.isEmpty()) return;
-    double k = std::min(double(pr_.vw) / s.width(), double(pr_.vh) / s.height());
-    QSizeF fs(s.width() * k, s.height() * k);
+    const Piece* pc = cur_ >= 0 && cur_ < pr_.pieces.size() ? &pr_.pieces[cur_] : nullptr;
+    const double k = std::min(double(pr_.vw) / s.width(), double(pr_.vh) / s.height()) * (pc ? pc->scale : 1.0);
+    const QSizeF fs(s.width() * k, s.height() * k);
     vitem_->setSize(fs);
-    vitem_->setPos((pr_.vw - fs.width()) / 2, (pr_.vh - fs.height()) / 2);
+    const double cx = pr_.vw / 2.0 + (pc ? pc->px * pr_.vw : 0), cy = pr_.vh / 2.0 + (pc ? pc->py * pr_.vh : 0);
+    vitem_->setPos(cx - fs.width() / 2, cy - fs.height() / 2);
+    vitem_->setTransformOriginPoint(fs.width() / 2, fs.height() / 2);
+    vitem_->setRotation(pc ? pc->rot : 0);
 }
 
 // ---------------------------------------------------------------- Modi / Vollbild
@@ -523,7 +703,6 @@ void MainWindow::applyLayoutVisibility() {
     topbar_->setVisible(!fullscreen_ && edit);  // obere Leiste nur beim Bearbeiten
     transport_->setVisible(!fullscreen_);
     tools_->setVisible(!fullscreen_ && edit);
-    btnAddMedia_->setVisible(edit);
     tlScroll_->setVisible(!fullscreen_ && edit);
     inspCard_->setVisible(!fullscreen_ && edit);
     if (fullscreen_) {
@@ -567,8 +746,16 @@ void MainWindow::dragEnterEvent(QDragEnterEvent* e) {
 }
 
 void MainWindow::dropEvent(QDropEvent* e) {
-    const auto urls = e->mimeData()->urls();
-    if (!urls.isEmpty()) openFile(urls.first().toLocalFile());
+    QStringList files;
+    for (const QUrl& u : e->mimeData()->urls())
+        if (u.isLocalFile()) files << u.toLocalFile();
+    if (files.isEmpty()) return;
+    if (pr_.pieces.isEmpty()) openFile(files.takeFirst());
+    for (const QString& f : files) addToBin(f);
+    if (!files.isEmpty()) {
+        btnEdit_->setChecked(true);
+        tabMedia_->click();
+    }
 }
 
 void MainWindow::openDialog() {
@@ -616,6 +803,8 @@ void MainWindow::openFile(const QString& path) {
     setWindowTitle("Cutline – " + QFileInfo(path).fileName());
     player_->setSource(QUrl::fromLocalFile(path));
     player_->pause();  // erstes Bild sofort anzeigen
+    addToBin(path);
+    startWaves(path);
     rebuildOverlays();
     refreshInspector();
     timeline_->relayout();
@@ -639,7 +828,7 @@ void MainWindow::onNativeSize(const QSizeF& s) {
     if (!s.isValid() || s.isEmpty()) return;
     if (!canvasSet_) {
         canvasSet_ = true;
-        canvasBg_->setVisible(true);
+        canvasBg_->setBrush(Qt::black);
         pr_.vw = int(s.width());
         pr_.vh = int(s.height());
         scene_->setSceneRect(0, 0, pr_.vw, pr_.vh);
@@ -712,7 +901,9 @@ void MainWindow::togglePlay() {
 
 // Abschnitt aktivieren; bei anderer Quelldatei wird nachgeladen
 void MainWindow::activate(int i, double srcPos, bool play) {
+    const bool changed = cur_ != i;
     cur_ = i;
+    if (changed) applyVideoTransform();
     const Piece& p = pr_.pieces[i];
     if (p.src != loadedSrc_) {
         loadedSrc_ = p.src;
@@ -979,6 +1170,8 @@ void MainWindow::modelEdited(bool keepTime) {
     timeline_->relayout();
     refreshInspector();
     if (!keepTime) seek(t_);
+    applyPlayerVolume();
+    applyVideoTransform();
     updateUi();
     updateAudio(false);
 }
@@ -1025,6 +1218,16 @@ void MainWindow::selectAudio(int id) {
 void MainWindow::refreshInspector() {
     Item* it = selItem_ ? pr_.item(selItem_) : nullptr;
     AudioClip* au = selAudio_ ? pr_.audio(selAudio_) : nullptr;
+    // Neue Auswahl -> Eigenschaften zeigen
+    const QString sel = QString("%1/%2/%3").arg(selPiece_).arg(selItem_).arg(selAudio_);
+    if (sel != lastSel_) {
+        lastSel_ = sel;
+        textUndo_ = false;
+        if (au || it || (selPiece_ >= 0 && selPiece_ < pr_.pieces.size())) tabProps_->click();
+    }
+    textBox_->setVisible(it && it->kind == Item::Text);
+    sliderStr_->setVisible(true);
+    lblStr_->setVisible(true);
     if (au) {
         insp_->setCurrentIndex(2);
         lblItem_->setText(T("audio_el"));
@@ -1036,13 +1239,27 @@ void MainWindow::refreshInspector() {
         sliderStr_->setValue(int(au->volume * 100));
     } else if (it) {
         insp_->setCurrentIndex(2);
-        lblItem_->setText(it->kind == Item::Image ? T("image") : T("blur_area"));
+        lblItem_->setText(it->kind == Item::Image ? T("image") : it->kind == Item::Text ? T("text") : T("blur_area"));
         { QSignalBlocker b(spT0_); spT0_->setValue(it->t0); }
         { QSignalBlocker b(spT1_); spT1_->setValue(it->t1); }
-        lblStr_->setText(it->kind == Item::Image ? T("size") : T("strength"));
-        QSignalBlocker b(sliderStr_);
-        sliderStr_->setRange(5, 100);
-        sliderStr_->setValue(it->kind == Item::Image ? int(it->w * 100) : int(it->strength));
+        lblStr_->setText(it->kind == Item::Blur ? T("strength") : T("size"));
+        {
+            QSignalBlocker b(sliderStr_);
+            sliderStr_->setRange(5, 100);
+            sliderStr_->setValue(it->kind == Item::Blur ? int(it->strength) : int(it->w * 100));
+        }
+        if (it->kind == Item::Text) {
+            if (textEdit_->toPlainText() != it->text) { QSignalBlocker b(textEdit_); textEdit_->setPlainText(it->text); }
+            { QSignalBlocker b(fontBox_); fontBox_->setCurrentIndex(std::max(0, fontBox_->findData(it->font))); }
+            { QSignalBlocker b(chkBg_); chkBg_->setChecked(it->bg); }
+            btnBgColor_->setEnabled(it->bg);
+            auto swatch = [](QPushButton* btn, unsigned argb) {
+                btn->setStyleSheet(QString("QPushButton { background: %1; border: 1px solid #888; border-radius: 5px; }")
+                                       .arg(QColor::fromRgba(argb).name(QColor::HexArgb)));
+            };
+            swatch(btnColor_, it->color);
+            swatch(btnBgColor_, it->bgColor);
+        }
     } else if (selPiece_ >= 0 && selPiece_ < pr_.pieces.size()) {
         const Piece& p = pr_.pieces[selPiece_];
         insp_->setCurrentIndex(1);
@@ -1050,6 +1267,11 @@ void MainWindow::refreshInspector() {
         { QSignalBlocker b(sliderSpeed_); sliderSpeed_->setValue(nearestSpeedStep(p.speed)); }
         { QSignalBlocker b(sliderPieceVol_); sliderPieceVol_->setValue(qRound(p.volume * 100)); }
         lblPieceVol_->setText(T("volume") + QString("  %1 %").arg(qRound(p.volume * 100)));
+        { QSignalBlocker b(sliderScale_); sliderScale_->setValue(qRound(p.scale * 100)); }
+        { QSignalBlocker b(spScale_); spScale_->setValue(p.scale * 100); }
+        { QSignalBlocker b(spPosX_); spPosX_->setValue(p.px * 100); }
+        { QSignalBlocker b(spPosY_); spPosY_->setValue(p.py * 100); }
+        { QSignalBlocker b(spRot_); spRot_->setValue(p.rot); }
         lblPiece_->setText(T("source_range").arg(fmtTime(p.start), fmtTime(p.end)) + "\n" +
                            T("result_dur").arg(fmtTime(p.outDur())));
     } else {
@@ -1103,6 +1325,13 @@ void MainWindow::sliderChanged(int v) {
     if (it->kind == Item::Blur) {
         it->strength = v;
         for (Overlay* ov : overlays_) ov->update();
+    } else if (it->kind == Item::Text) {
+        const double k = (v / 100.0) / std::max(0.01, it->w);
+        it->w = v / 100.0;
+        it->h = std::min(1.0, it->h * k);
+        it->x = std::min(it->x, std::max(0.0, 1 - it->w));
+        it->y = std::min(it->y, std::max(0.0, 1 - it->h));
+        rebuildOverlays();
     } else {
         it->w = v / 100.0;
         it->h = it->w * pr_.vw * it->ar / pr_.vh;
@@ -1134,20 +1363,74 @@ void MainWindow::deleteSelected() {
     }
 }
 
+// Teilen: nur das ausgewählte Element (Video-Abschnitt, Ton oder Element);
+// ist nichts ausgewählt, wird alles geteilt, was an der Abspielposition liegt.
 void MainWindow::doSplit() {
     if (pr_.pieces.isEmpty()) return;
-    double src = 0;
-    int i = pr_.locate(t_, &src);
-    Piece p = pr_.pieces[i];
-    if (src - p.start < kMinPiece || p.end - src < kMinPiece) return;
+    const double t = t_;
+    auto splitVideo = [&]() {
+        double src = 0;
+        const int i = pr_.locate(t, &src);
+        const Piece p = pr_.pieces[i];
+        if (src - p.start < kMinPiece || p.end - src < kMinPiece) return false;
+        pr_.pieces[i].end = src;
+        Piece rest = p;
+        rest.start = src;
+        pr_.pieces.insert(i + 1, rest);
+        return true;
+    };
+    auto splitAudio = [&](int id) {
+        for (int i = 0; i < pr_.audios.size(); ++i) {
+            AudioClip& a = pr_.audios[i];
+            if (a.id != id) continue;
+            if (t - a.t0 < kMinPiece || a.t0 + a.dur - t < kMinPiece) return false;
+            AudioClip b = a;
+            b.id = pr_.nextId++;
+            b.t0 = t;
+            b.srcStart = a.srcStart + (t - a.t0);
+            b.dur = a.t0 + a.dur - t;
+            a.dur = t - a.t0;
+            pr_.audios.insert(i + 1, b);
+            return true;
+        }
+        return false;
+    };
+    auto splitItem = [&](int id) {
+        for (int i = 0; i < pr_.items.size(); ++i) {
+            Item& it = pr_.items[i];
+            if (it.id != id) continue;
+            if (t - it.t0 < kMinPiece || it.t1 - t < kMinPiece) return false;
+            Item b = it;
+            b.id = pr_.nextId++;
+            b.t0 = t;
+            it.t1 = t;
+            pr_.items.insert(i + 1, b);
+            return true;
+        }
+        return false;
+    };
     pushUndo();
-    pr_.pieces[i].end = src;
-    Piece rest = p;
-    rest.start = src;
-    pr_.pieces.insert(i + 1, rest);
-    selPiece_ = i + 1;
-    selItem_ = selAudio_ = 0;
-    modelEdited(true);
+    bool changed = false;
+    if (selAudio_) {
+        changed = splitAudio(selAudio_);
+    } else if (selItem_) {
+        changed = splitItem(selItem_);
+    } else if (selPiece_ >= 0) {
+        changed = splitVideo();
+        if (changed) selPiece_ = pr_.locate(t + 0.001, nullptr);
+    } else {
+        QList<int> aIds, iIds;
+        for (const AudioClip& a : pr_.audios) aIds << a.id;
+        for (const Item& it : pr_.items) iIds << it.id;
+        changed = splitVideo();
+        for (int id : aIds) changed |= splitAudio(id);
+        for (int id : iIds) changed |= splitItem(id);
+    }
+    if (!changed) {
+        undo_.pop_back();
+        return;
+    }
+    modelEdited();
 }
 
 void MainWindow::doDelete() {
@@ -1211,6 +1494,12 @@ void MainWindow::addImage() {
     QString f = QFileDialog::getOpenFileName(this, T("choose_image"), QString(),
                                              "Images (*.png *.jpg *.jpeg *.webp *.bmp *.gif)");
     if (f.isEmpty()) return;
+    addToBin(f);
+    addImageFile(f);
+}
+
+void MainWindow::addImageFile(const QString& f) {
+    if (pr_.pieces.isEmpty()) return;
     QPixmap pm(f);
     if (pm.isNull()) return;
     Item it;
@@ -1222,21 +1511,205 @@ void MainWindow::addImage() {
     newItem(it);
 }
 
-// Ein Knopf für Video und Ton: die Art wird an der Datei erkannt
-void MainWindow::addMedia() {
-    QString f = QFileDialog::getOpenFileName(
-        this, T("add_media"), QString(),
+// ---------------------------------------------------------------- Medien-Sammlung (rechts)
+enum class MediaKind { Video, Audio, Image };
+
+static MediaKind mediaKindOf(const QString& path) {
+    const QString e = QFileInfo(path).suffix().toLower();
+    static const QStringList img = {"png", "jpg", "jpeg", "webp", "bmp", "gif"};
+    static const QStringList aud = {"mp3", "wav", "m4a", "aac", "flac", "ogg", "opus", "wma"};
+    if (img.contains(e)) return MediaKind::Image;
+    if (aud.contains(e)) return MediaKind::Audio;
+    return MediaKind::Video;
+}
+
+// Vorschau-Kachel 16:9 mit mittig eingepasstem Bild
+static QIcon binIcon(const QImage& src, const QColor& bg, const QPixmap& symbol = QPixmap()) {
+    QPixmap pm(240, 136);
+    pm.fill(bg);
+    QPainter p(&pm);
+    p.setRenderHint(QPainter::SmoothPixmapTransform);
+    if (!src.isNull()) {
+        const QImage s = src.scaled(pm.size(), Qt::KeepAspectRatio, Qt::SmoothTransformation);
+        p.drawImage((pm.width() - s.width()) / 2, (pm.height() - s.height()) / 2, s);
+    }
+    if (!symbol.isNull()) p.drawPixmap((pm.width() - symbol.width()) / 2, (pm.height() - symbol.height()) / 2, symbol);
+    return QIcon(pm);
+}
+
+QWidget* MainWindow::buildMediaPage() {
+    auto* w = new QWidget;
+    auto* v = new QVBoxLayout(w);
+    v->setContentsMargins(0, 0, 0, 0);
+    v->setSpacing(10);
+    auto* imp = mk("import", "add_media_tip", Ic::Open, "primary");
+    connect(imp, &QPushButton::clicked, this, &MainWindow::importMedia);
+    v->addWidget(imp);
+    bin_ = new QListWidget;
+    bin_->setViewMode(QListView::IconMode);
+    bin_->setIconSize(QSize(120, 68));
+    bin_->setGridSize(QSize(128, 100));
+    bin_->setResizeMode(QListView::Adjust);
+    bin_->setMovement(QListView::Static);
+    bin_->setWordWrap(false);
+    bin_->setTextElideMode(Qt::ElideMiddle);
+    bin_->setStyleSheet("QListWidget::item { padding: 2px; }");
+    connect(bin_, &QListWidget::itemDoubleClicked, this,
+            [this](QListWidgetItem* it) { insertFromBin(it->data(Qt::UserRole).toString()); });
+    v->addWidget(bin_, 1);
+    lblBinHint_ = new QLabel;
+    lblBinHint_->setObjectName("hint");
+    lblBinHint_->setWordWrap(true);
+    v->addWidget(lblBinHint_);
+    return w;
+}
+
+void MainWindow::importMedia() {
+    const QStringList files = QFileDialog::getOpenFileNames(
+        this, T("import"), QString(),
         T("media_files") + " (*.mp4 *.mov *.mkv *.m4v *.avi *.webm *.wmv *.flv *.ts "
-                           "*.mp3 *.wav *.m4a *.aac *.flac *.ogg *.opus *.wma);;*.*");
-    if (f.isEmpty()) return;
-    if (pr_.pieces.isEmpty()) return openFile(f);
-    MediaInfo mi = probeMedia(f);
+                           "*.mp3 *.wav *.m4a *.aac *.flac *.ogg *.opus *.wma *.png *.jpg *.jpeg *.webp *.bmp *.gif);;*.*");
+    if (files.isEmpty()) return;
+    QStringList rest = files;
+    // Noch nichts offen: das erste Video wird direkt geöffnet
+    if (pr_.pieces.isEmpty())
+        for (int i = 0; i < rest.size(); ++i)
+            if (mediaKindOf(rest[i]) == MediaKind::Video) { openFile(rest.takeAt(i)); break; }
+    for (const QString& f : rest) addToBin(f);
+    tabMedia_->click();
+}
+
+void MainWindow::addToBin(const QString& path) {
+    for (int i = 0; i < bin_->count(); ++i)
+        if (bin_->item(i)->data(Qt::UserRole).toString() == path) return;
+    const MediaKind kind = mediaKindOf(path);
+    const Theme& th = currentTheme();
+    auto* it = new QListWidgetItem(QFileInfo(path).fileName());
+    it->setData(Qt::UserRole, path);
+    it->setToolTip(QDir::toNativeSeparators(path));
+    if (kind == MediaKind::Image) {
+        it->setIcon(binIcon(QImage(path), QColor(0, 0, 0)));
+    } else if (kind == MediaKind::Audio) {
+        it->setIcon(binIcon(QImage(), audioColor().darker(160), makeIcon(Ic::Music, Qt::white).pixmap(44, 44)));
+    } else {
+        it->setIcon(binIcon(QImage(), QColor(0, 0, 0), makeIcon(Ic::AddVideo, th.muted).pixmap(40, 40)));
+        // erstes Bild des Videos im Hintergrund holen
+        if (!binDir_) binDir_ = std::make_unique<QTemporaryDir>();
+        const QString jpg = binDir_->filePath(QString("bin%1.jpg").arg(bin_->count()));
+        auto* p = new QProcess(this);
+        connect(p, &QProcess::finished, this, [this, p, jpg, path] {
+            p->deleteLater();
+            const QImage im(jpg);
+            if (im.isNull()) return;
+            for (int i = 0; i < bin_->count(); ++i)
+                if (bin_->item(i)->data(Qt::UserRole).toString() == path)
+                    bin_->item(i)->setIcon(binIcon(im, QColor(0, 0, 0)));
+        });
+        p->start(ffmpegPath(), {"-hide_banner", "-v", "error", "-y", "-ss", "1", "-i", path, "-frames:v", "1",
+                                "-vf", "scale=240:-2", jpg});
+    }
+    bin_->addItem(it);
+    lblBinHint_->setText(T("bin_hint"));
+}
+
+// Doppelklick in der Sammlung: an der Abspielposition einfügen
+void MainWindow::insertFromBin(const QString& path) {
+    if (pr_.pieces.isEmpty()) {
+        if (mediaKindOf(path) == MediaKind::Video) openFile(path);
+        return;
+    }
+    if (mediaKindOf(path) == MediaKind::Image) return addImageFile(path);
+    MediaInfo mi = probeMedia(path);
     if (!mi.ok || mi.duration <= 0) {
         QMessageBox::warning(this, "Cutline", T("media_unreadable"));
         return;
     }
-    if (mi.w > 0 && mi.h > 0) addVideoFile(f, mi);
-    else addAudioFile(f, mi);
+    if (mi.w > 0 && mi.h > 0) addVideoFile(path, mi);
+    else addAudioFile(path, mi);
+}
+
+// ---------------------------------------------------------------- Text
+void MainWindow::addText() {
+    if (pr_.pieces.isEmpty()) return;
+    Item it;
+    it.kind = Item::Text;
+    it.text = T("text_ph");
+    it.font = specialFonts().contains("Anton") ? QString("Anton") : defaultTextFont();
+    it.w = 0.5;
+    it.h = 0.16;
+    it.x = 0.25;
+    it.y = 0.42;
+    btnEdit_->setChecked(true);
+    newItem(it);
+}
+
+void MainWindow::pickItemColor(bool background) {
+    Item* it = pr_.item(selItem_);
+    if (!it || it->kind != Item::Text) return;
+    const QColor cur = QColor::fromRgba(background ? it->bgColor : it->color);
+    const QColor c = QColorDialog::getColor(cur, this, T("color"), QColorDialog::ShowAlphaChannel);
+    if (!c.isValid()) return;
+    pushUndo();
+    (background ? it->bgColor : it->color) = c.rgba();
+    for (Overlay* ov : overlays_) ov->update();
+    refreshInspector();
+}
+
+// ---------------------------------------------------------------- Bild anpassen
+void MainWindow::editPieceTf(const std::function<void(Piece&)>& fn) {
+    if (selPiece_ < 0 || selPiece_ >= pr_.pieces.size()) return;
+    fn(pr_.pieces[selPiece_]);
+    // Vorschau: zum bearbeiteten Abschnitt springen, damit man die Änderung sieht
+    if (cur_ != selPiece_) seek(pr_.outStart(selPiece_) + 0.01);
+    applyVideoTransform();
+    timeline_->update();
+}
+
+// ---------------------------------------------------------------- Wellenformen
+const WaveSet* MainWindow::waves(const QString& path) const {
+    auto it = waves_.find(path);
+    return it == waves_.end() ? nullptr : it->second.get();
+}
+
+// Ton der Datei grob abtasten (4 kHz mono) und 50 Spitzenwerte pro Sekunde behalten
+void MainWindow::startWaves(const QString& path) {
+    if (path.isEmpty() || waves_.count(path)) return;
+    auto ws = std::make_shared<WaveSet>();
+    ws->rate = 50;
+    waves_[path] = ws;
+    auto* p = new QProcess(this);
+    auto carry = std::make_shared<QByteArray>();
+    auto acc = std::make_shared<std::pair<int, float>>(0, 0.f);
+    auto chunks = std::make_shared<int>(0);
+    connect(p, &QProcess::readyReadStandardOutput, this, [this, p, ws, carry, acc, chunks] {
+        const QByteArray d = *carry + p->readAllStandardOutput();
+        const int n = int(d.size() / 2);
+        const auto* smp = reinterpret_cast<const qint16*>(d.constData());
+        for (int i = 0; i < n; ++i) {
+            const float v = std::abs(int(smp[i])) / 32768.f;
+            if (v > acc->second) acc->second = v;
+            if (++acc->first == 80) {
+                ws->peaks.push_back(acc->second);
+                acc->first = 0;
+                acc->second = 0;
+            }
+        }
+        *carry = d.mid(n * 2);
+        if (++*chunks % 40 == 0) timeline_->update();
+    });
+    connect(p, &QProcess::finished, this, [this, p, ws, acc] {
+        if (acc->first > 0) ws->peaks.push_back(acc->second);
+        p->deleteLater();
+        timeline_->update();
+    });
+    p->start(ffmpegPath(), {"-hide_banner", "-v", "error", "-i", path, "-vn", "-ac", "1", "-ar", "4000", "-f", "s16le", "-"});
+}
+
+void MainWindow::timelineZoomed() {
+    // Abspielposition nach dem Zoomen in der Mitte halten
+    QTimer::singleShot(0, this, [this] {
+        tlScroll_->horizontalScrollBar()->setValue(int(timeline_->playheadX() - tlScroll_->viewport()->width() / 2));
+    });
 }
 
 // Weiteres Video an der Playhead-Position einfügen
@@ -1267,6 +1740,7 @@ void MainWindow::addVideoFile(const QString& f, const MediaInfo& mi) {
     selItem_ = selAudio_ = 0;
     t_ = pr_.outStart(at);
     startThumbs(si);
+    startWaves(f);
     modelEdited();
 }
 
@@ -1279,6 +1753,7 @@ void MainWindow::addAudioFile(const QString& f, const MediaInfo& mi) {
     a.dur = std::min(mi.duration, std::max(0.5, pr_.total() - t_));
     pushUndo();
     pr_.audios.append(a);
+    startWaves(f);
     selAudio_ = a.id;
     selPiece_ = -1;
     selItem_ = 0;
@@ -1298,10 +1773,19 @@ void MainWindow::exportVideo() {
     const QString finalPath = opt.outputPath();
     // Beim Ersetzen erst in eine Zwischendatei schreiben (ffmpeg liest das Original noch)
     const QString out = replace ? QFileInfo(finalPath).dir().filePath(".cutline-export-" +
-                                  QString::number(QDateTime::currentMSecsSinceEpoch()) + ".mp4")
+                                  QString::number(QDateTime::currentMSecsSinceEpoch()) + "." + eo.format)
                                 : finalPath;
 
-    QStringList args = buildExport(pr_, eo, out);
+    // Texte in Export-Auflösung als Bilder rendern (sieht genauso aus wie in der Vorschau)
+    Project ep = pr_;
+    auto textDir = std::make_shared<QTemporaryDir>();
+    for (Item& it : ep.items) {
+        if (it.kind != Item::Text) continue;
+        const QString png = textDir->filePath(QString("text%1.png").arg(it.id));
+        renderTextImage(it, QSize(std::max(2, int(it.w * eo.width)), std::max(2, int(it.h * eo.height)))).save(png);
+        it.path = png;
+    }
+    QStringList args = buildExport(ep, eo, out);
     const double total = pr_.total();
     auto* dlg = new QProgressDialog(T("exporting"), T("cancel"), 0, 1000, this);
     dlg->setWindowModality(Qt::WindowModal);
@@ -1325,7 +1809,7 @@ void MainWindow::exportVideo() {
     connect(proc, &QProcess::readyReadStandardError, this,
             [proc, errText] { *errText += QString::fromUtf8(proc->readAllStandardError()); });
     connect(dlg, &QProgressDialog::canceled, proc, [proc] { proc->kill(); });
-    connect(proc, &QProcess::finished, this, [this, proc, dlg, out, errText, replace, original, finalPath](int code, QProcess::ExitStatus st) {
+    connect(proc, &QProcess::finished, this, [this, proc, dlg, out, errText, replace, original, finalPath, textDir](int code, QProcess::ExitStatus st) {
         bool cancelled = st == QProcess::CrashExit;
         dlg->close();
         dlg->deleteLater();
@@ -1371,6 +1855,7 @@ void MainWindow::selfShots(const QString& dir) {
         doSplit();
         addBlur();
         seek(2.5);
+        addText();
         selectPiece(0);
         sliderPieceVol_->setValue(50);
         // Spulen: viele Ziehschritte hintereinander dürfen den Player nicht fluten
@@ -1381,6 +1866,15 @@ void MainWindow::selfShots(const QString& dir) {
     QTimer::singleShot(5500, this, [=] {
         shot("b_edit");
         scrubPrev_->hide();
+        selectItem(pr_.items.last().id);
+        seek(3.0);
+    });
+    QTimer::singleShot(6000, this, [=] {
+        shot("b2_text");
+        tabMedia_->click();
+    });
+    QTimer::singleShot(6500, this, [=] {
+        shot("b3_media");
         enterFullscreen();
     });
     QTimer::singleShot(7500, this, [=] {
@@ -1421,6 +1915,31 @@ void MainWindow::selfShots(const QString& dir) {
                 QTimer::singleShot(400, this, [=] { shot("theme_" + list[i].id); });
             });
         }
-        QTimer::singleShot(list.size() * 900 + 800, this, [] { QApplication::quit(); });
+        QTimer::singleShot(list.size() * 900 + 800, this, [=] {
+            // Export-Test: Text + verschobener/gedrehter Abschnitt, als MP4, GIF und MP3
+            if (!pr_.pieces.isEmpty()) {
+                pr_.pieces.last().scale = 0.7;
+                pr_.pieces.last().rot = 8;
+                pr_.pieces.last().px = 0.1;
+            }
+            ensureProbed();
+            for (const char* fmt : {"mp4", "gif", "mp3"}) {
+                ExportOptions eo;
+                eo.width = 640; eo.height = 360; eo.fps = 30; eo.format = fmt;
+                Project ep = pr_;
+                for (Item& it : ep.items)
+                    if (it.kind == Item::Text) {
+                        it.path = dir + QString("/text%1.png").arg(it.id);
+                        renderTextImage(it, QSize(int(it.w * 640), int(it.h * 360))).save(it.path);
+                    }
+                QProcess pr;
+                pr.start(ffmpegPath(), buildExport(ep, eo, dir + "/export." + fmt));
+                pr.waitForFinished(180000);
+                QFile log(dir + QString("/export_%1.txt").arg(fmt));
+                log.open(QIODevice::WriteOnly);
+                log.write(QString("exit=%1\n").arg(pr.exitCode()).toUtf8() + pr.readAllStandardError().right(3000));
+            }
+            QApplication::quit();
+        });
     });
 }

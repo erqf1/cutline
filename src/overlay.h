@@ -24,6 +24,8 @@ private:
     int id_;
     EditorHost* host_;
     QPixmap pm_;
+    QImage textImg_;
+    QString textKey_;
     double w_ = 0, h_ = 0;
     enum Mode { None, Move, Resize } mode_ = None;
     bool moved_ = false;
