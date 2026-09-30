@@ -156,7 +156,7 @@ QWidget* MainWindow::buildInspector() {
     lblPieceVol_ = new QLabel;
     v->addWidget(lblPieceVol_);
     sliderPieceVol_ = new QSlider(Qt::Horizontal);
-    sliderPieceVol_->setRange(0, 200);
+    sliderPieceVol_->setRange(0, 600);  // bis 600 %
     sliderPieceVol_->setFocusPolicy(Qt::NoFocus);
     connect(sliderPieceVol_, &QSlider::sliderPressed, this, &MainWindow::pushUndo);
     connect(sliderPieceVol_, &QSlider::valueChanged, this, &MainWindow::setPieceVolume);
@@ -1285,7 +1285,7 @@ void MainWindow::refreshInspector() {
         { QSignalBlocker b(spT1_); spT1_->setValue(au->t0 + au->dur); }
         lblStr_->setText(T("volume") + QString("  %1 %").arg(qRound(au->volume * 100)));
         QSignalBlocker b(sliderStr_);
-        sliderStr_->setRange(0, 200);
+        sliderStr_->setRange(0, 600);  // bis 600 %
         sliderStr_->setValue(int(au->volume * 100));
     } else if (it) {
         insp_->setCurrentIndex(2);

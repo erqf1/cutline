@@ -12,8 +12,9 @@
 
 static constexpr double kMinPiece = 0.1;
 
-// Lautstärke wie in Schnittprogrammen üblich in dB: -60 dB = stumm, +6 dB = doppelt so laut
-static double toDb(double v) { return v <= 0.001 ? -60.0 : std::clamp(20.0 * std::log10(v), -60.0, 6.0); }
+// Lautstärke wie in Schnittprogrammen üblich in dB: -60 dB = stumm, oben +15,6 dB = 600 %
+static const double kMaxDb = 20.0 * std::log10(6.0);
+static double toDb(double v) { return v <= 0.001 ? -60.0 : std::clamp(20.0 * std::log10(v), -60.0, kMaxDb); }
 static double fromDb(double db) { return db <= -59.9 ? 0.0 : std::pow(10.0, db / 20.0); }
 
 Timeline::Timeline(EditorHost* host) : host_(host) {
@@ -68,7 +69,7 @@ QRectF Timeline::audioRect(int k) const {
 }
 
 double Timeline::volLineY(const QRectF& area, double volume) const {
-    const double frac = (toDb(volume) + 60.0) / 66.0;
+    const double frac = (toDb(volume) + 60.0) / (60.0 + kMaxDb);
     return area.bottom() - 3 - frac * (area.height() - 6);
 }
 
@@ -412,7 +413,7 @@ void Timeline::mouseMoveEvent(QMouseEvent* e) {
     } else if (drag_.kind == Drag::PieceVol || drag_.kind == Drag::AudioVol) {
         // nach oben lauter, nach unten leiser (feiner mit gedrückter Umschalttaste)
         const double perPx = (e->modifiers() & Qt::ShiftModifier) ? 0.08 : 0.35;
-        const double v = fromDb(std::clamp(drag_.a - (pos.y() - drag_.y0) * perPx, -60.0, 6.0));
+        const double v = fromDb(std::clamp(drag_.a - (pos.y() - drag_.y0) * perPx, -60.0, kMaxDb));
         if (drag_.kind == Drag::PieceVol) {
             if (drag_.index < pr.pieces.size()) pr.pieces[drag_.index].volume = v;
         } else if (AudioClip* a = pr.audio(drag_.index)) {
