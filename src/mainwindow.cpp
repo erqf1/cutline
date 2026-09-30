@@ -91,7 +91,7 @@ MainWindow::MainWindow() {
         for (auto& [id, ap] : audioPlayers_) ap.out->setDevice(d);
     });
     if (!qEnvironmentVariableIsSet("CUTLINE_NO_UPDATE_CHECK"))
-        QTimer::singleShot(4000, this, [this] { updater_->check(false); });
+        updater_->startAutoCheck(4000);
 }
 
 // ---------------------------------------------------------------- Aufbau
