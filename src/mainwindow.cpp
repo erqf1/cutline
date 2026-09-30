@@ -586,8 +586,8 @@ void MainWindow::updatePlayIcon() {
 }
 
 void MainWindow::retranslate() {
-    setWindowTitle(pr_.sources.isEmpty() ? QString("Cutline")
-                                         : "Cutline – " + QFileInfo(pr_.sources[0].path).fileName());
+    // Qt haengt unter Windows/Linux selbst " - Cutline" an (applicationDisplayName)
+    setWindowTitle(pr_.sources.isEmpty() ? QString("Cutline") : QFileInfo(pr_.sources[0].path).fileName());
     for (const BtnSpec& s : btns_) {
         QString text = s.text ? T(s.text) : QString();
         s.b->setText(text.isEmpty() ? QString() : " " + text);
@@ -800,7 +800,7 @@ void MainWindow::openFile(const QString& path) {
     loadedSrc_ = 0;
     pending_ = false;
     lblHint_->hide();
-    setWindowTitle("Cutline – " + QFileInfo(path).fileName());
+    setWindowTitle(QFileInfo(path).fileName());
     player_->setSource(QUrl::fromLocalFile(path));
     player_->pause();  // erstes Bild sofort anzeigen
     addToBin(path);
