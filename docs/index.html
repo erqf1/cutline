@@ -1,4 +1,4 @@
-<!doctype html>
+﻿<!doctype html>
 <html lang="en" data-theme="dark">
 <head>
 <meta charset="utf-8">
@@ -494,7 +494,7 @@
 
   // ---------- Theme-Galerie ----------
   var THEMES = [['mint', 'Mint', '#4ade9b'], ['ocean', 'Ocean', '#4aa3ff'], ['violet', 'Violet', '#a78bfa'], ['sunset', 'Sunset', '#ff8a4c'],
-                ['light', 'Light', '#e8ebf2'], ['xp', 'Windows XP', '#316ac5'], ['terminal', 'Terminal', '#22ff66']];
+                ['light', 'Light', '#e8ebf2'], ['xp', 'Windows XP', '#316ac5'], ['terminal', 'Terminal', '#cccccc']];
   var gal = $('#gallery');
   gal.innerHTML = THEMES.map(function (t, i) { return '<button type="button" data-th="' + t[0] + '" class="' + (i === 0 ? 'on' : '') + '"><i style="background:' + t[2] + '"></i>' + t[1] + '</button>'; }).join('');
   gal.addEventListener('click', function (e) {

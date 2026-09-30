@@ -15,6 +15,7 @@
 #include <QUrl>
 #include <QVBoxLayout>
 #include <QVideoSink>
+#include "clipgallery.h"
 #include "dialogs.h"
 #include "i18n.h"
 #include "theme.h"
@@ -142,6 +143,7 @@ void MainWindow::buildUi() {
     player_->setAudioOutput(audio_);
     scene_ = new QGraphicsScene(this);
     canvasBg_ = scene_->addRect(0, 0, 1920, 1080, Qt::NoPen, Qt::black);
+    canvasBg_->setVisible(false);  // erst mit geladenem Video (sonst sieht man den leeren Hintergrund)
     canvasBg_->setZValue(-1);
     vitem_ = new QGraphicsVideoItem;
     vitem_->setZValue(0);
@@ -170,12 +172,14 @@ void MainWindow::buildUi() {
 
     // Obere Leiste
     topbar_ = new QWidget;
+    topbar_->setObjectName("topbar");
     auto* top = new QHBoxLayout(topbar_);
     top->setContentsMargins(0, 0, 0, 0);
     top->setSpacing(8);
     auto* bOpen = mk("open", "open_video", Ic::Open, nullptr, " (Ctrl+O)");
     auto* bAddV = mk("add_video", nullptr, Ic::AddVideo);
     auto* bAddA = mk("add_audio", nullptr, Ic::AddAudio);
+    btnClips_ = mk("clips", nullptr, Ic::Clipline);
     btnEdit_ = mk("edit", nullptr, Ic::Edit, nullptr, " (E)");
     btnEdit_->setCheckable(true);
     auto* bSet = mk(nullptr, "settings", Ic::Settings);
@@ -183,12 +187,15 @@ void MainWindow::buildUi() {
     connect(bOpen, &QPushButton::clicked, this, &MainWindow::openDialog);
     connect(bAddV, &QPushButton::clicked, this, &MainWindow::addVideo);
     connect(bAddA, &QPushButton::clicked, this, &MainWindow::addAudio);
+    connect(btnClips_, &QPushButton::clicked, this, &MainWindow::openClips);
     connect(btnEdit_, &QPushButton::toggled, this, &MainWindow::setEditMode);
     connect(bSet, &QPushButton::clicked, this, &MainWindow::openSettings);
     connect(bExp, &QPushButton::clicked, this, &MainWindow::exportVideo);
     top->addWidget(bOpen);
     top->addWidget(bAddV);
     top->addWidget(bAddA);
+    top->addWidget(btnClips_);
+    btnClips_->setVisible(!cliplineClipsDir().isEmpty());
     top->addStretch();
     top->addWidget(btnEdit_);
     top->addWidget(bSet);
@@ -308,10 +315,14 @@ void MainWindow::applyTheme() {
     for (const BtnSpec& s : btns_) {
         if (s.b == btnPlay_) continue;
         s.b->setProperty("dummy", 0);
-        static_cast<QPushButton*>(s.b)->setIcon(makeIcon(s.icon, s.onAccent ? th.accentText : th.text));
+        const bool onBar = th.xp && topbar_->isAncestorOf(s.b);  // XP-Taskleiste: weiße Symbole
+        static_cast<QPushButton*>(s.b)->setIcon(makeIcon(s.icon, s.onAccent || onBar ? th.accentText : th.text));
     }
     lblVolIcon_->setPixmap(makeIcon(Ic::Volume, th.muted).pixmap(20, 20));
-    lblHint_->setStyleSheet(QString("color:%1;font-size:17px;background:transparent").arg(th.muted.name()));
+    lblHint_->setStyleSheet(th.xp ? QString("color:#FFFFFF;font-size:17px;font-weight:bold;background:transparent")
+                                  : QString("color:%1;font-size:17px;background:transparent").arg(th.muted.name()));
+    // XP: Taskleiste mit Innenabstand, sonst bündig
+    if (auto* l = topbar_->layout()) l->setContentsMargins(th.xp ? QMargins(6, 4, 6, 4) : QMargins(0, 0, 0, 0));
     updatePlayIcon();
     view_->viewport()->update();
     timeline_->update();
@@ -356,6 +367,19 @@ void MainWindow::resizeEvent(QResizeEvent* e) {
     QMainWindow::resizeEvent(e);
     fitView();
     lblHint_->move((view_->width() - lblHint_->width()) / 2, view_->height() / 2 - 10);
+}
+
+// Clipline evtl. inzwischen installiert/eingerichtet -> Clips-Knopf beim Aktivieren prüfen
+void MainWindow::changeEvent(QEvent* e) {
+    if (e->type() == QEvent::ActivationChange && isActiveWindow())
+        btnClips_->setVisible(!fullscreen_ && !cliplineClipsDir().isEmpty());
+    QMainWindow::changeEvent(e);
+}
+
+void MainWindow::openClips() {
+    if (cliplineClipsDir().isEmpty()) return;
+    ClipGalleryDialog dlg(this);
+    if (dlg.exec() == QDialog::Accepted && !dlg.chosen().isEmpty()) openFile(dlg.chosen());
 }
 
 void MainWindow::closeEvent(QCloseEvent* e) {
@@ -504,6 +528,7 @@ void MainWindow::onNativeSize(const QSizeF& s) {
     if (!s.isValid() || s.isEmpty()) return;
     if (!canvasSet_) {
         canvasSet_ = true;
+        canvasBg_->setVisible(true);
         pr_.vw = int(s.width());
         pr_.vh = int(s.height());
         scene_->setSceneRect(0, 0, pr_.vw, pr_.vh);
@@ -1151,6 +1176,12 @@ void MainWindow::selfShots(const QString& dir) {
         ExportDialog e(this, pr_.vw, pr_.vh, 30.0);
         QTimer::singleShot(300, &e, [&e, dir] { e.grab().save(dir + "/g_export.png"); e.accept(); });
         e.exec();
+        if (!cliplineClipsDir().isEmpty()) {
+            auto* g = new ClipGalleryDialog(this);
+            g->setAttribute(Qt::WA_DontShowOnScreen);
+            g->show();
+            QTimer::singleShot(4000, g, [g, dir] { g->grab().save(dir + "/h_clips.png"); g->deleteLater(); });
+        }
     });
     // Alle Themes einzeln (für die Website)
     QTimer::singleShot(13000, this, [=] {

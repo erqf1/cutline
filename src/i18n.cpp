@@ -11,6 +11,9 @@ const char* kNames[N] = {"Deutsch", "English", "Español", "Français", "Italian
                          "Nederlands", "Polski", "Türkçe", "Русский", "日本語", "中文"};
 
 const Entry kTable[] = {
+ {"clips", {"Clips","Clips","Clips","Clips","Clip","Clipes","Clips","Klipy","Klipler","Клипы","クリップ","剪辑"}},
+ {"open_clipline", {"Clipline öffnen","Open Clipline","Abrir Clipline","Ouvrir Clipline","Apri Clipline","Abrir Clipline","Clipline openen","Otwórz Clipline","Clipline'ı aç","Открыть Clipline","Clipline を開く","打开 Clipline"}},
+ {"no_clips", {"Noch keine Clips gespeichert.","No clips saved yet.","Aún no hay clips guardados.","Aucun clip enregistré pour l'instant.","Nessun clip salvato.","Ainda não há clipes guardados.","Nog geen clips opgeslagen.","Brak zapisanych klipów.","Henüz kayıtlı klip yok.","Пока нет сохранённых клипов.","保存されたクリップはまだありません。","还没有保存的剪辑。"}},
  {"open", {"Öffnen","Open","Abrir","Ouvrir","Apri","Abrir","Openen","Otwórz","Aç","Открыть","開く","打开"}},
  {"add_video", {"Video hinzufügen","Add video","Añadir vídeo","Ajouter une vidéo","Aggiungi video","Adicionar vídeo","Video toevoegen","Dodaj wideo","Video ekle","Добавить видео","動画を追加","添加视频"}},
  {"add_audio", {"Ton hinzufügen","Add audio","Añadir audio","Ajouter un son","Aggiungi audio","Adicionar áudio","Audio toevoegen","Dodaj dźwięk","Ses ekle","Добавить звук","音声を追加","添加音频"}},

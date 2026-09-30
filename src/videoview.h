@@ -15,6 +15,7 @@ signals:
 
 protected:
     void drawBackground(QPainter* p, const QRectF& r) override;
+    void paintBliss(QPainter* p, const QRect& r);
     void mousePressEvent(QMouseEvent* e) override;
     void mouseReleaseEvent(QMouseEvent* e) override;
     void mouseMoveEvent(QMouseEvent* e) override;

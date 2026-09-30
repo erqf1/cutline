@@ -59,6 +59,7 @@ protected:
     void dragEnterEvent(QDragEnterEvent*) override;
     void dropEvent(QDropEvent*) override;
     void closeEvent(QCloseEvent*) override;
+    void changeEvent(QEvent*) override;
 
 private:
     struct BtnSpec {
@@ -89,6 +90,7 @@ private:
     void exitFullscreen();
     void openDialog();
     void openSettings();
+    void openClips();
     void fitView();
     void fitVideoItem();
 
@@ -160,7 +162,7 @@ private:
 
     // UI
     std::vector<BtnSpec> btns_;
-    QPushButton *btnPlay_, *btnEdit_;
+    QPushButton *btnPlay_, *btnEdit_, *btnClips_;
     QSlider *slider_, *sliderStr_;
     QLabel *lblTime_, *lblHint_, *lblPiece_, *lblItem_, *lblStr_, *lblVolIcon_;
     QLabel *lblInspHint_, *lblSegment_, *lblSpeed_, *lblStart_, *lblEnd_;

@@ -1,5 +1,5 @@
-cmake_minimum_required(VERSION 3.21)
-project(Cutline VERSION 1.0.0 LANGUAGES CXX)
+﻿cmake_minimum_required(VERSION 3.21)
+project(Cutline VERSION 1.1.0 LANGUAGES CXX)
 if(WIN32)
     enable_language(RC)
 endif()
@@ -28,6 +28,8 @@ set(CUTLINE_SOURCES
     src/videoview.h
     src/videoview.cpp
     src/dialogs.h
+    src/clipgallery.h
+    src/clipgallery.cpp
     src/dialogs.cpp
     src/mainwindow.h
     src/mainwindow.cpp

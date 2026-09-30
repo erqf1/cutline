@@ -38,6 +38,7 @@ int main(int argc, char* argv[]) {
     app.setWindowIcon(appIcon);
 
     QSettings st;
+    st.setValue("exePath", QCoreApplication::applicationFilePath());  // damit Clipline "In Cutline bearbeiten" anbieten kann
     setCurrentTheme(st.value("theme", "mint").toString());
     app.setStyleSheet(buildStyleSheet(currentTheme()));
 
