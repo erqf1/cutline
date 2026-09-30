@@ -141,7 +141,7 @@
   .bento { display:grid; grid-template-columns:repeat(6,1fr); gap:16px; }
   .c2 { grid-column:span 2; } .c3 { grid-column:span 3; } .c4 { grid-column:span 4; } .c6 { grid-column:span 6; }
   .demo { margin-top:22px; }
-  .blurdemo { position:relative; height:190px; border-radius:14px; overflow:hidden; background:url(img/photo-bird.webp) 50% 30%/cover; }
+  .blurdemo { position:relative; height:190px; border-radius:14px; overflow:hidden; background:url(img/photo-kingfisher.webp) 40% 45%/cover; }
   .blurdemo .box { position:absolute; left:34%; top:18%; width:30%; height:58%; border-radius:12px; backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
     border:2px solid rgba(255,255,255,.9); animation:scan 6s ease-in-out infinite; }
   @keyframes scan { 0%,100% { left:30%; } 50% { left:46%; } }
@@ -378,10 +378,10 @@
         <h3 data-i18n="b6_h">12 languages</h3>
         <p data-i18n="b6_p">Deutsch, English, Español, Français, Italiano, Português, Nederlands, Polski, Türkçe, Русский, 日本語, 中文 – asked once on first start.</p>
       </div>
-      <div class="gcard c3 reveal" style="background:linear-gradient(135deg,color-mix(in srgb,#ff5f6d 10%,var(--card-solid)),var(--card-solid) 60%)">
-        <div class="pair"><img src="icon.png" alt="" style="border-radius:12px"><span class="arrow">⇄</span><img src="clipline.png" alt=""></div>
-        <h3 data-i18n="b8_h">Works with Clipline</h3>
-        <p data-i18n="b8_p">With Clipline installed, a Clips button shows every saved moment, ready to trim.</p>
+      <div class="gcard c3 reveal">
+        <div class="ic"><svg class="i" viewBox="0 0 24 24"><path d="M12 3l8 4v5c0 5-3.5 8-8 9-4.5-1-8-4-8-9V7z"/></svg></div>
+        <h3 data-i18n="b8_h">Your files stay yours</h3>
+        <p data-i18n="b8_p">Originals are never changed. Nothing is uploaded. Open source under the MIT license.</p>
       </div>
     </div>
   </div>
@@ -434,16 +434,6 @@
   </div>
 </section>
 
-<section style="padding-top:0">
-  <div class="wrap">
-    <div class="sister reveal">
-      <img src="clipline.png" alt="Clipline logo">
-      <div><h3 data-i18n="sis_h">Never miss the moment to edit.</h3><p data-i18n="sis_p">Clipline records quietly in the background and saves the last minutes of your screen with one key.</p></div>
-      <a class="btn" href="https://erqf1.github.io/clipline/"><span data-i18n="sis_b">Get Clipline</span></a>
-    </div>
-  </div>
-</section>
-
 <section id="faq" style="padding-top:40px">
   <div class="wrap" style="max-width:820px">
     <div class="center"><p class="label reveal">FAQ</p><h2 class="reveal" data-i18n="q_h">Questions</h2></div>
@@ -468,7 +458,7 @@
 <footer>
   <div class="wrap">
     <span>© 2026 Cutline · MIT License</span>
-    <span><a href="https://github.com/erqf1/cutline">GitHub</a> · <a href="https://github.com/erqf1/cutline/blob/main/LICENSE">License</a> · <a href="https://erqf1.github.io/clipline/">Clipline</a></span>
+    <span><a href="https://github.com/erqf1/cutline">GitHub</a> · <a href="https://github.com/erqf1/cutline/blob/main/LICENSE">License</a></span>
   </div>
 </footer>
 
@@ -549,7 +539,7 @@
     try { localStorage.setItem('theme', t); } catch (e) {}
   });
 
-  var tsrc = ['bird', 'valley', 'falls', 'bird', 'valley', 'falls', 'bird', 'valley'];
+  var tsrc = ['nest', 'kingfisher', 'hedgehog', 'nest', 'kingfisher', 'hedgehog', 'nest', 'kingfisher'];
   $('#thumbs').innerHTML = tsrc.map(function (s, i) { return '<i style="background-image:url(img/photo-' + s + '.webp);background-position:' + (i * 13 % 100) + '% 40%"></i>'; }).join('') + '<span class="ph"></span>';
 
   var THEMES = [['mint', 'Mint', '#4ade9b'], ['ocean', 'Ocean', '#4aa3ff'], ['violet', 'Violet', '#a78bfa'], ['sunset', 'Sunset', '#ff8a4c'],
@@ -565,9 +555,9 @@
 
   // Qualitätsansicht: Foto wirklich auf die Auflösung rechnen, dann wie im Vollbild anzeigen
   var PHOTOS = [
-    { src: 'img/photo-bird.webp', fx: .50, fy: .32, credit: 'Anhinga · NPS Everglades · Public domain' },
-    { src: 'img/photo-valley.webp', fx: .50, fy: .30, credit: 'Oolah Valley · NPS Alaska · Public domain' },
-    { src: 'img/photo-falls.webp', fx: .56, fy: .36, credit: 'Chute-Montmorency · Wikimedia Commons · CC0' }
+    { src: 'img/photo-nest.webp', fx: .47, fy: .45, credit: 'Baltimore Oriole chicks · Juliancolton · Public domain' },
+    { src: 'img/photo-kingfisher.webp', fx: .38, fy: .48, credit: 'Kingfisher · Frank-2.0 · CC0' },
+    { src: 'img/photo-hedgehog.webp', fx: .44, fy: .58, credit: 'Hedgehog · George Chernilevsky · Public domain' }
   ];
   var qRes = 1080, qIdx = 0, qImgs = {}, low = document.createElement('canvas'), cv = $('#qcv'), ctx = cv.getContext('2d');
   function loadPhoto(i, cb) {
@@ -635,12 +625,11 @@
     b10_h:'Auch ein richtig guter Video-Player.', b10_p:'Setze Cutline als Standard-App für Videos: Es startet sofort, Vollbild mit F11, Klick pausiert, Pfeile springen, sanftes Umgebungslicht ums Bild. Bearbeiten ist nur eine Taste entfernt.',
     b7_h:'Tastatur-freundlich', b7_p:'Eine Taste pro Aktion. Leertaste spielt ab, Pfeile springen 5 Sekunden, F11 zeigt nur das Video.',
     b6_h:'12 Sprachen', b6_p:'Deutsch, English, Español, Français, Italiano, Português, Nederlands, Polski, Türkçe, Русский, 日本語, 中文 – beim ersten Start gefragt.',
-    b8_h:'Arbeitet mit Clipline', b8_p:'Ist Clipline installiert, zeigt ein Clips-Knopf jeden gespeicherten Moment – bereit zum Schneiden.',
+    b8_h:'Deine Dateien bleiben deine', b8_p:'Originale werden nie verändert. Nichts wird hochgeladen. Open Source unter MIT-Lizenz.',
     q_l:'Export-Qualität', qq_h:'Größe wählen. Ergebnis sehen.', qq_s:'Ein echtes Foto, wirklich auf die Export-Auflösung gerechnet – so, wie das Video im Vollbild auf einem 1080p-Bildschirm aussieht. Mit den Pfeilen wechselst du das Foto.',
     t_l:'Designs', t_h:'Mach es zu deinem.', t_s:'Sieben Looks, von ruhigem Dunkel bis zum kompletten Windows-XP-Luna-Look. Jederzeit in den Einstellungen wechselbar.',
     d_l:'Download', d_h:'Hol dir Cutline.', d_s:'Für alle kostenlos. System wählen – jede Datei kommt direkt von GitHub Releases.',
     d_note:'Unter macOS ist die App nicht notarisiert: beim ersten Mal Rechtsklick auf Cutline → Öffnen. Nicht sicher, welchen Mac du hast? Apple-Menü → Über diesen Mac.',
-    sis_h:'Verpass nie wieder den Moment.', sis_p:'Clipline nimmt leise im Hintergrund auf und speichert die letzten Minuten deines Bildschirms mit einer Taste.', sis_b:'Clipline holen',
     q_h:'Fragen',
     q1:'Ist es wirklich kostenlos?', q1a:'Ja. Cutline ist Open Source unter der MIT-Lizenz – frei nutzbar, teilbar und veränderbar.',
     q5:'Kann ich es einfach als Video-Player benutzen?', q5a:'Ja. Mit dem Installer erscheint es im „Öffnen mit“-Menü deiner Videos, dort kannst du es auch zum Standard machen. Es startet sofort, und bearbeitet wird erst, wenn du E drückst.',

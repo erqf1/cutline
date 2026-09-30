@@ -8,7 +8,6 @@
 #include <QPixmap>
 
 QIcon makeIcon(Ic id, const QColor& c) {
-    if (id == Ic::Clipline) return QIcon(makeCliplinePixmap(96));  // farbiges Logo, nicht eingefärbt
     const int S = 96;
     QPixmap pm(S, S);
     pm.fill(Qt::transparent);
@@ -203,37 +202,5 @@ QPixmap makeAppPixmap(int size) {
     p.drawPath(t);
     p.setPen(QPen(QColor(255, 255, 255, 200), 5, Qt::SolidLine, Qt::RoundCap));
     p.drawLine(24, 20, 24, 80);
-    return pm;
-}
-
-// Clipline: Koralle -> Violett, weißer Wiederholungs-Pfeil mit Aufnahmepunkt (wie in Clipline/src/look.cpp)
-QPixmap makeCliplinePixmap(int size) {
-    QPixmap pm(size, size);
-    pm.fill(Qt::transparent);
-    QPainter p(&pm);
-    p.setRenderHint(QPainter::Antialiasing);
-    p.scale(size / 100.0, size / 100.0);
-    QLinearGradient g(0, 0, 100, 100);
-    g.setColorAt(0, QColor("#ff5f6d"));
-    g.setColorAt(1, QColor("#8b5cf6"));
-    p.setPen(Qt::NoPen);
-    p.setBrush(g);
-    p.drawRoundedRect(QRectF(4, 4, 92, 92), 24, 24);
-    p.setPen(QPen(Qt::white, 8.5, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
-    p.setBrush(Qt::NoBrush);
-    p.drawArc(QRectF(24, 24, 52, 52), 120 * 16, 290 * 16);
-    const double a = 120 * 3.14159265 / 180;
-    const QPointF P(50 + 26 * std::cos(a), 50 - 26 * std::sin(a));
-    const QPointF dir(std::sin(a), std::cos(a)), nrm(std::cos(a), -std::sin(a));
-    QPainterPath head;
-    head.moveTo(P + dir * 12);
-    head.lineTo(P + nrm * 10 - dir * 3);
-    head.lineTo(P - nrm * 10 - dir * 3);
-    head.closeSubpath();
-    p.setPen(Qt::NoPen);
-    p.setBrush(Qt::white);
-    p.drawPath(head);
-    p.setBrush(QColor(255, 255, 255, 235));
-    p.drawEllipse(QPointF(50, 50), 11, 11);
     return pm;
 }

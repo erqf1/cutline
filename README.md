@@ -8,7 +8,6 @@ A simple, fast video editor. Open an mp4 or mov, cut it, change the speed of par
 - **Sensible export.** Pick resolution (4K … SD), frame rate and quality. Only values up to the original are offered, so you never waste disk space.
 - **Fullscreen** with `F11`, click the video to pause, arrow keys jump 5 seconds.
 - **12 languages** and several themes (including a full Windows XP Luna look).
-- **Works with [Clipline](https://github.com/erqf1/clipline).** If Clipline is installed, a *Clips* button shows your saved clips, ready to edit.
 - Uses your GPU encoder when available (NVENC, Quick Sync, AMF, VideoToolbox), otherwise x264.
 
 ## Download
