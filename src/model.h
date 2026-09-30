@@ -1,5 +1,6 @@
 #pragma once
 #include <QList>
+#include <QSize>
 #include <QString>
 #include <QStringList>
 #include <algorithm>
@@ -55,7 +56,15 @@ struct Snapshot {
     QList<Piece> pieces;
     QList<Item> items;
     QList<AudioClip> audios;
+    int aspect = 0;
 };
+
+// Bildformate der Ausgabe; w == 0 heißt "wie das erste Video"
+struct AspectFormat { int w, h; const char* label; };
+constexpr int kAspectCount = 7;
+extern const AspectFormat kAspects[kAspectCount];
+// Größe der Bildfläche: die kurze Seite des Originals bleibt (z. B. 1920×1080 -> 9:16 = 1080×1920)
+QSize canvasSize(int aspect, int natW, int natH);
 
 class Project {
 public:
@@ -63,7 +72,9 @@ public:
     QList<Piece> pieces;
     QList<Item> items;
     QList<AudioClip> audios;
-    int vw = 1920, vh = 1080;  // Bildfläche (Größe des ersten Videos)
+    int vw = 1920, vh = 1080;  // Bildfläche (aus Bildformat und Größe des ersten Videos)
+    int natW = 0, natH = 0;    // Größe des ersten Videos
+    int aspect = 0;            // Index in kAspects
     int nextId = 1;
 
     double total() const {
@@ -99,8 +110,8 @@ public:
         for (AudioClip& a : audios) if (a.id == id) return &a;
         return nullptr;
     }
-    Snapshot snapshot() const { return {pieces, items, audios}; }
-    void restore(const Snapshot& s) { pieces = s.pieces; items = s.items; audios = s.audios; }
+    Snapshot snapshot() const { return {pieces, items, audios, aspect}; }
+    void restore(const Snapshot& s) { pieces = s.pieces; items = s.items; audios = s.audios; aspect = s.aspect; }
 };
 
 QString fmtTime(double t);

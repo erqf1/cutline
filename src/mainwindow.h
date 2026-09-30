@@ -62,7 +62,8 @@ class MainWindow : public QMainWindow, public EditorHost {
 public:
     MainWindow();
     void openFile(const QString& path);
-    void selfShots(const QString& dir);  // Entwickler-Test: rendert das Fenster in PNGs (ohne Bildschirmfoto)
+    void selfShots(const QString& dir);
+    void aspectShots(const QString& dir);  // Entwickler-Test: Bildformat umstellen, rendern, exportieren  // Entwickler-Test: rendert das Fenster in PNGs (ohne Bildschirmfoto)
 
     // EditorHost
     Project& pr() override { return pr_; }
@@ -126,6 +127,8 @@ private:
     void openSettings();
     void fitView();
     void fitVideoItem();
+    void applyCanvas();
+    void setAspect(int aspect);
 
     void onDuration(qint64 ms);
     void onNativeSize(const QSizeF& s);
@@ -231,6 +234,8 @@ private:
     QWidget* textBox_;
     QPlainTextEdit* textEdit_;
     QComboBox* fontBox_;
+    QComboBox* aspectBox_ = nullptr;
+    QLabel* lblAspect_ = nullptr;
     QCheckBox* chkBg_;
     QPushButton *btnColor_, *btnBgColor_;
     QLabel *lblFont_, *lblColors_;

@@ -7,6 +7,7 @@ A simple, fast video editor. Open an mp4 or mov, cut it, change the speed of par
 - **Edit mode with a timeline.** Drag segment edges to trim, split only what is selected (or everything at the playhead), per-segment speed, zoom in/out.
 - **Volume like in the big editors.** Waveforms on every clip; drag the volume line up or down and see the level in dB.
 - **Resize, move and rotate** each segment, add **text** (bundled display fonts or any installed font, with or without background), image overlays and real blur areas.
+- **Frame format** for any platform: original, 16:9, 9:16 (TikTok, Reels, Shorts), 1:1, 4:5, 4:3 or 21:9 – the video is fitted in, zoom it with the size slider to fill the frame.
 - **Media panel.** Everything you import sits on the right; double-click to insert it at the playhead.
 - **Sensible export.** MP4, MOV, MKV, GIF or audio only (MP3, WAV, M4A). Pick resolution (4K … SD), frame rate and quality – only values up to the original are offered.
 - **Checks for updates** and installs them on request (or ignore a version).

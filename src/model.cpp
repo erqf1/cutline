@@ -7,6 +7,26 @@
 #include <QProcess>
 #include <QRegularExpression>
 
+const AspectFormat kAspects[kAspectCount] = {
+    {0, 0, nullptr},
+    {16, 9, "16:9 (YouTube)"},
+    {9, 16, "9:16 (TikTok, Reels, Shorts)"},
+    {1, 1, "1:1"},
+    {4, 5, "4:5 (Instagram)"},
+    {4, 3, "4:3"},
+    {21, 9, "21:9"},
+};
+
+QSize canvasSize(int aspect, int natW, int natH) {
+    if (natW <= 0 || natH <= 0) return {1920, 1080};
+    const AspectFormat& f = kAspects[std::clamp(aspect, 0, kAspectCount - 1)];
+    if (f.w == 0) return {natW, natH};
+    const double base = std::min(natW, natH);
+    auto even = [](double v) { return std::max(2, int(std::lround(v / 2)) * 2); };
+    if (f.w >= f.h) return {even(base * f.w / f.h), even(base)};
+    return {even(base), even(base * f.h / f.w)};
+}
+
 QString fmtTime(double t) {
     t = std::max(0.0, t);
     int m = int(t / 60);

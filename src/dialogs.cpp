@@ -109,11 +109,12 @@ ExportDialog::ExportDialog(QWidget* parent, int srcW, int srcH, double srcFps, c
     form->addRow(T("format"), format_);
 
     res_ = new QComboBox;
-    res_->addItem(QString("%1 (%2×%3)").arg(T("original")).arg(srcW).arg(srcH), srcH);
+    const int shortSide = std::min(srcW, srcH);
+    res_->addItem(QString("%1 (%2×%3)").arg(T("original")).arg(srcW).arg(srcH), shortSide);
     struct R { int h; const char* name; };
     for (R r : {R{2160, "4K (2160p)"}, R{1440, "2K (1440p)"}, R{1080, "Full HD (1080p)"}, R{720, "HD (720p)"},
                 R{480, "SD (480p)"}, R{360, "SD (360p)"}, R{240, "240p"}})
-        if (r.h < srcH) res_->addItem(r.name, r.h);
+        if (r.h < shortSide) res_->addItem(r.name, r.h);
     form->addRow(T("resolution"), res_);
 
     fps_ = new QComboBox;
@@ -209,11 +210,9 @@ ExportDialog::ExportDialog(QWidget* parent, int srcW, int srcH, double srcFps, c
 
 ExportOptions ExportDialog::options() const {
     ExportOptions o;
-    int h = res_->currentData().toInt();
-    h -= h % 2;
-    int w = int(std::lround(double(srcW_) * h / srcH_ / 2.0)) * 2;
-    o.width = std::max(2, w);
-    o.height = std::max(2, h);
+    const double k = res_->currentData().toDouble() / std::max(1, std::min(srcW_, srcH_));
+    o.width = std::max(2, int(std::lround(srcW_ * k / 2.0)) * 2);
+    o.height = std::max(2, int(std::lround(srcH_ * k / 2.0)) * 2);
     o.fps = fps_->currentData().toDouble();
     o.quality = quality_->currentData().toInt();
     o.format = format_->currentData().toString();

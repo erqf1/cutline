@@ -474,6 +474,15 @@ void MainWindow::buildUi() {
         connect(b, &QPushButton::clicked, this, [this, fn = t.fn] { (this->*fn)(); });
         tl->addWidget(b);
     }
+    tl->addSpacing(8);
+    lblAspect_ = new QLabel;
+    lblAspect_->setObjectName("hint");
+    tl->addWidget(lblAspect_);
+    aspectBox_ = new QComboBox;
+    for (int i = 0; i < kAspectCount; ++i) aspectBox_->addItem(kAspects[i].label ? QString::fromUtf8(kAspects[i].label) : QString());
+    aspectBox_->setFocusPolicy(Qt::NoFocus);  // Tastenkürzel (S, Q, W …) bleiben beim Editor
+    connect(aspectBox_, &QComboBox::activated, this, [this](int i) { setAspect(i); });
+    tl->addWidget(aspectBox_);
     tl->addStretch();
     auto* zOut = mk(nullptr, "zoom_out", Ic::ZoomOut, "tool", " (Ctrl + −)");
     auto* zIn = mk(nullptr, "zoom_in", Ic::ZoomIn, "tool", " (Ctrl + +)");
@@ -607,6 +616,9 @@ void MainWindow::retranslate() {
     lblRot_->setText(T("rotation"));
     btnResetTf_->setText(T("reset"));
     lblFont_->setText(T("font"));
+    lblAspect_->setText(T("aspect"));
+    aspectBox_->setItemText(0, T("original"));
+    aspectBox_->setToolTip(T("aspect_tip"));
     lblColors_->setText(T("color"));
     chkBg_->setText(T("background"));
     lblBinHint_->setText(bin_->count() ? T("bin_hint") : T("bin_empty"));
@@ -829,14 +841,51 @@ void MainWindow::onNativeSize(const QSizeF& s) {
     if (!canvasSet_) {
         canvasSet_ = true;
         canvasBg_->setBrush(Qt::black);
-        pr_.vw = int(s.width());
-        pr_.vh = int(s.height());
-        scene_->setSceneRect(0, 0, pr_.vw, pr_.vh);
-        canvasBg_->setRect(0, 0, pr_.vw, pr_.vh);
-        rebuildOverlays();
+        pr_.natW = int(s.width());
+        pr_.natH = int(s.height());
+        applyCanvas();
+        return;
     }
     fitVideoItem();
     fitView();
+}
+
+// Bildfläche aus Bildformat + erstem Video; Video wird darin eingepasst (Rest schwarz)
+void MainWindow::applyCanvas() {
+    const QSize c = canvasSize(pr_.aspect, pr_.natW, pr_.natH);
+    if (c.width() != pr_.vw || c.height() != pr_.vh) {
+        pr_.vw = c.width();
+        pr_.vh = c.height();
+        // Bilder behalten ihr Seitenverhältnis, alles bleibt innerhalb der Fläche
+        for (Item& it : pr_.items) {
+            if (it.kind == Item::Image) {
+                it.h = it.w * pr_.vw * it.ar / pr_.vh;
+                if (it.h > 1) { it.w /= it.h; it.h = 1; }
+            }
+            it.w = std::min(it.w, 1.0);
+            it.h = std::min(it.h, 1.0);
+            it.x = std::clamp(it.x, 0.0, 1.0 - it.w);
+            it.y = std::clamp(it.y, 0.0, 1.0 - it.h);
+        }
+    }
+    scene_->setSceneRect(0, 0, pr_.vw, pr_.vh);
+    canvasBg_->setRect(0, 0, pr_.vw, pr_.vh);
+    if (aspectBox_) aspectBox_->setCurrentIndex(pr_.aspect);
+    rebuildOverlays();
+    fitVideoItem();
+    fitView();
+}
+
+void MainWindow::setAspect(int aspect) {
+    aspect = std::clamp(aspect, 0, kAspectCount - 1);
+    if (aspect == pr_.aspect || pr_.sources.isEmpty()) {
+        if (aspectBox_) aspectBox_->setCurrentIndex(pr_.aspect);
+        return;
+    }
+    pushUndo();
+    pr_.aspect = aspect;
+    applyCanvas();
+    modelEdited();
 }
 
 void MainWindow::onStatus(QMediaPlayer::MediaStatus st) {
@@ -1158,6 +1207,7 @@ void MainWindow::afterRestore() {
     selItem_ = 0;
     selAudio_ = 0;
     selPiece_ = std::min<int>(selPiece_, pr_.pieces.size() - 1);
+    if (canvasSet_) applyCanvas();
     modelEdited();
 }
 
@@ -1941,5 +1991,50 @@ void MainWindow::selfShots(const QString& dir) {
             }
             QApplication::quit();
         });
+    });
+}
+
+void MainWindow::aspectShots(const QString& dir) {
+    auto shot = [this, dir](const QString& name) { grab().save(dir + "/" + name + ".png"); };
+    auto log = [dir](const QString& line) {
+        QFile f(dir + "/aspect.txt");
+        if (f.open(QIODevice::Append)) f.write((line + QChar(10)).toUtf8());
+    };
+    QTimer::singleShot(3500, this, [=] {
+        btnEdit_->setChecked(true);
+        seek(1.0);
+        addText();
+        log(QString("start aspect=%1 canvas=%2x%3").arg(pr_.aspect).arg(pr_.vw).arg(pr_.vh));
+        setAspect(2);  // 9:16
+        log(QString("9:16 canvas=%1x%2 box=%3").arg(pr_.vw).arg(pr_.vh).arg(aspectBox_->currentText()));
+    });
+    QTimer::singleShot(4500, this, [=] {
+        shot("aspect_9_16");
+        ensureProbed();
+        ExportDialog e(this, pr_.vw, pr_.vh, 30.0, pr_.sources[0].path);
+        ExportOptions eo = e.options();
+        eo.format = "mp4";
+        log(QString("export %1x%2").arg(eo.width).arg(eo.height));
+        Project ep = pr_;
+        for (Item& it : ep.items)
+            if (it.kind == Item::Text) {
+                it.path = dir + QString("/text%1.png").arg(it.id);
+                renderTextImage(it, QSize(int(it.w * eo.width), int(it.h * eo.height))).save(it.path);
+            }
+        QProcess pr;
+        pr.start(ffmpegPath(), buildExport(ep, eo, dir + "/export_9_16.mp4"));
+        pr.waitForFinished(180000);
+        log(QString("export exit=%1 %2").arg(pr.exitCode()).arg(QString::fromUtf8(pr.readAllStandardError().right(800))));
+        setAspect(3);  // 1:1
+        log(QString("1:1 canvas=%1x%2").arg(pr_.vw).arg(pr_.vh));
+    });
+    QTimer::singleShot(5500, this, [=] {
+        shot("aspect_1_1");
+        doUndo();
+        log(QString("undo aspect=%1 canvas=%2x%3").arg(pr_.aspect).arg(pr_.vw).arg(pr_.vh));
+    });
+    QTimer::singleShot(6500, this, [=] {
+        shot("aspect_undo");
+        QApplication::quit();
     });
 }
