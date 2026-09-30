@@ -34,6 +34,24 @@ MainWindow::MainWindow() {
     applyTheme();
     retranslate();
     setEditMode(false);
+
+    // Updates: kurz nach dem Start still prüfen, fragt nur bei einer neuen (nicht ignorierten) Version
+    Updater::Options uo;
+    uo.repo = "erqf1/cutline";
+    uo.appName = "Cutline";
+    uo.version = APP_VERSION;
+    uo.parent = [this] { return static_cast<QWidget*>(this); };
+    uo.texts = [] {
+        return UpdaterTexts{T("upd_title"), T("upd_text"), T("upd_now"), T("upd_ignore"), T("upd_later"),
+                            T("upd_downloading"), T("upd_failed"), T("upd_latest"), T("cancel")};
+    };
+    uo.beforeInstall = [this] {
+        if (undo_.empty()) return true;
+        return QMessageBox::question(this, "Cutline", T("upd_unsaved")) == QMessageBox::Yes;
+    };
+    updater_ = new Updater(uo, this);
+    if (!qEnvironmentVariableIsSet("CUTLINE_NO_UPDATE_CHECK"))
+        QTimer::singleShot(4000, this, [this] { updater_->check(false); });
 }
 
 // ---------------------------------------------------------------- Aufbau
@@ -537,6 +555,7 @@ void MainWindow::openSettings() {
         QSettings().setValue("language", c);
         retranslate();
     });
+    connect(&dlg, &SettingsDialog::checkUpdates, this, [this] { updater_->check(true); });
     connect(&dlg, &SettingsDialog::themeChanged, this, [this](const QString& id) {
         setCurrentTheme(id);
         QSettings().setValue("theme", id);

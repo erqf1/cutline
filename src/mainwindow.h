@@ -27,6 +27,7 @@
 #include "icons.h"
 #include "overlay.h"
 #include "timeline.h"
+#include "updater.h"
 #include "videoview.h"
 
 // Zeitleiste unten: Klick springt direkt an die Stelle (statt in kleinen Schritten)
@@ -213,4 +214,5 @@ private:
     QScrollArea* tlScroll_;
     QVBoxLayout* rootLayout_;
     QProcess* exportProc_ = nullptr;
+    Updater* updater_ = nullptr;
 };

@@ -1,4 +1,4 @@
-﻿cmake_minimum_required(VERSION 3.21)
+cmake_minimum_required(VERSION 3.21)
 project(Cutline VERSION 1.3.0 LANGUAGES CXX)
 if(WIN32)
     enable_language(RC)
@@ -8,7 +8,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_AUTOMOC ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Widgets Multimedia MultimediaWidgets)
+find_package(Qt6 REQUIRED COMPONENTS Widgets Multimedia MultimediaWidgets Network)
 
 set(CUTLINE_SOURCES
     src/main.cpp
@@ -31,6 +31,8 @@ set(CUTLINE_SOURCES
     src/dialogs.cpp
     src/mainwindow.h
     src/mainwindow.cpp
+    src/updater.h
+    src/updater.cpp
 )
 
 if(WIN32)
@@ -55,7 +57,8 @@ else()
     add_executable(cutline ${CUTLINE_SOURCES})
 endif()
 
-target_link_libraries(cutline PRIVATE Qt6::Widgets Qt6::Multimedia Qt6::MultimediaWidgets)
+target_link_libraries(cutline PRIVATE Qt6::Widgets Qt6::Multimedia Qt6::MultimediaWidgets Qt6::Network)
+target_compile_definitions(cutline PRIVATE APP_VERSION="${PROJECT_VERSION}")
 if(MSVC)
     target_compile_options(cutline PRIVATE /utf-8 /W3 /Zc:__cplusplus)
 endif()

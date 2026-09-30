@@ -27,12 +27,13 @@ public:
 signals:
     void languageChanged(const QString& code);
     void themeChanged(const QString& id);
+    void checkUpdates();
 
 private:
     void retranslate();
     QLabel *lblLang_, *lblTheme_;
     QComboBox *lang_, *theme_;
-    QPushButton* ok_;
+    QPushButton *ok_, *update_;
 };
 
 // Export-Optionen: Auflösung / Bildrate / Qualität – nur Werte bis zum Original werden angeboten

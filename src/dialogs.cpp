@@ -54,6 +54,15 @@ SettingsDialog::SettingsDialog(QWidget* parent) : QDialog(parent) {
     form->addRow(lblLang_, lang_);
     form->addRow(lblTheme_, theme_);
     v->addLayout(form);
+    update_ = new QPushButton;
+    connect(update_, &QPushButton::clicked, this, &SettingsDialog::checkUpdates);
+    auto* ver = new QLabel("Cutline " APP_VERSION);
+    ver->setObjectName("hint");
+    auto* ur = new QHBoxLayout;
+    ur->addWidget(ver);
+    ur->addStretch();
+    ur->addWidget(update_);
+    v->addLayout(ur);
     v->addStretch();
     ok_ = new QPushButton;
     ok_->setObjectName("primary");
@@ -74,6 +83,7 @@ void SettingsDialog::retranslate() {
     lblLang_->setText(T("language"));
     lblTheme_->setText(T("theme"));
     ok_->setText(T("ok"));
+    update_->setText(T("upd_check"));
 }
 
 // ---------------------------------------------------------------- Export
