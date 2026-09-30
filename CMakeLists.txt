@@ -1,5 +1,5 @@
 ﻿cmake_minimum_required(VERSION 3.21)
-project(Cutline VERSION 1.2.1 LANGUAGES CXX)
+project(Cutline VERSION 1.3.0 LANGUAGES CXX)
 if(WIN32)
     enable_language(RC)
 endif()
@@ -48,7 +48,7 @@ elseif(APPLE)
         MACOSX_BUNDLE_SHORT_VERSION_STRING ${PROJECT_VERSION}
         MACOSX_BUNDLE_BUNDLE_VERSION ${PROJECT_VERSION}
         MACOSX_BUNDLE_INFO_STRING "Cutline video editor"
-        MACOSX_BUNDLE_COPYRIGHT "MIT License"
+        MACOSX_BUNDLE_COPYRIGHT "Apache License 2.0"
         MACOSX_BUNDLE_LONG_VERSION_STRING ${PROJECT_VERSION}
         MACOSX_BUNDLE_INFO_PLIST ${CMAKE_SOURCE_DIR}/assets/Info.plist.in)
 else()

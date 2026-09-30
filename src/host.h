@@ -24,6 +24,7 @@ public:
     virtual void pushUndo() = 0;
     virtual void modelEdited(bool keepTime = false) = 0;
     virtual void seek(double t) = 0;
+    virtual void scrub(double t) = 0;  // beim Ziehen: Anzeige sofort, Player gedrosselt
     virtual double viewScale() const = 0;
     virtual int timelineViewportWidth() const = 0;
     virtual const ThumbSet* thumbs(int srcIndex) const = 0;

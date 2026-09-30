@@ -17,6 +17,7 @@ struct Source {
 struct Piece {
     int src = 0;
     double start = 0, end = 0, speed = 1.0;
+    double volume = 1.0;  // Lautstärke des Video-Tons in diesem Abschnitt (0..2)
     double outDur() const { return (end - start) / speed; }
 };
 

@@ -17,6 +17,8 @@
 #include <QTemporaryDir>
 #include <QTimer>
 #include <QVideoFrame>
+#include <QMouseEvent>
+#include <QStyleOptionSlider>
 #include <functional>
 #include <map>
 #include <memory>
@@ -26,6 +28,29 @@
 #include "overlay.h"
 #include "timeline.h"
 #include "videoview.h"
+
+// Zeitleiste unten: Klick springt direkt an die Stelle (statt in kleinen Schritten)
+class SeekSlider : public QSlider {
+public:
+    SeekSlider() : QSlider(Qt::Horizontal) {}
+
+protected:
+    void mousePressEvent(QMouseEvent* e) override {
+        if (e->button() == Qt::LeftButton) {
+            QStyleOptionSlider opt;
+            initStyleOption(&opt);
+            const QRect handle = style()->subControlRect(QStyle::CC_Slider, &opt, QStyle::SC_SliderHandle, this);
+            if (!handle.contains(e->position().toPoint())) {
+                const int v = QStyle::sliderValueFromPosition(minimum(), maximum(),
+                                                              int(e->position().x()) - handle.width() / 2,
+                                                              width() - handle.width());
+                setValue(v);
+                emit sliderMoved(v);
+            }
+        }
+        QSlider::mousePressEvent(e);
+    }
+};
 
 class MainWindow : public QMainWindow, public EditorHost {
     Q_OBJECT
@@ -46,6 +71,7 @@ public:
     void pushUndo() override;
     void modelEdited(bool keepTime = false) override;
     void seek(double t) override;
+    void scrub(double t) override;
     double viewScale() const override { return view_->transform().m11(); }
     int timelineViewportWidth() const override { return tlScroll_->viewport()->width(); }
     const ThumbSet* thumbs(int srcIndex) const override;
@@ -124,8 +150,12 @@ private:
     void newItem(Item it);
     void addBlur();
     void addImage();
-    void addVideo();
-    void addAudio();
+    void addMedia();
+    void addVideoFile(const QString& f, const MediaInfo& mi);
+    void addAudioFile(const QString& f, const MediaInfo& mi);
+    void setPieceVolume(int v);
+    void applyPlayerVolume();
+    void showScrubPreview(int sliderValue);
     void exportVideo();
 
     Project pr_;
@@ -141,6 +171,11 @@ private:
     bool pending_ = false, pendingPlay_ = false;
     double pendingPos_ = 0, pendingRate_ = 1;
     double masterVol_ = 0.8;
+    // Spulen: Player-Sprünge drosseln, bis der Sprung angekommen ist, die alte Position ignorieren
+    QTimer* seekTimer_ = nullptr;
+    QElapsedTimer seekThrottle_, seekClock_;
+    double scrubTarget_ = 0, seekSrc_ = 0;
+    bool seeking_ = false;
     std::map<int, AudioPlayer> audioPlayers_;
 
     // Bild
@@ -162,11 +197,13 @@ private:
 
     // UI
     std::vector<BtnSpec> btns_;
-    QPushButton *btnPlay_, *btnEdit_, *fsBtn_ = nullptr;
+    QPushButton *btnPlay_, *btnEdit_, *btnAddMedia_, *fsBtn_ = nullptr;
     QLabel* fsHint_ = nullptr;
+    QLabel* scrubPrev_ = nullptr;  // Vorschaubild über der Zeitleiste beim Ziehen
     QSlider *slider_, *sliderStr_;
     QLabel *lblTime_, *lblHint_, *lblPiece_, *lblItem_, *lblStr_, *lblVolIcon_;
-    QLabel *lblInspHint_, *lblSegment_, *lblSpeed_, *lblStart_, *lblEnd_;
+    QLabel *lblInspHint_, *lblSegment_, *lblSpeed_, *lblStart_, *lblEnd_, *lblPieceVol_;
+    QSlider* sliderPieceVol_;
     QPushButton* btnDelEl_;
     QWidget *topbar_, *transport_, *tools_;
     QStackedWidget* insp_;

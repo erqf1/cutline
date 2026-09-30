@@ -28,7 +28,7 @@ macOS builds are not notarized. On first start, right-click the app and choose *
 
 ## Publishing (maintainers)
 
-Run `publish.bat`: it asks for your GitHub username, opens the new-repository page, pushes the code and the `v1.0.0` tag (which triggers the release builds) and opens the Pages settings (`main` / `/docs`).
+Run `publish.bat`: it asks for your GitHub username, opens the new-repository page, pushes the code and the `v1.0.0` tag (which triggers the release builds).
 
 ## Keyboard shortcuts
 
@@ -58,4 +58,4 @@ On Windows, `build.bat` builds and creates the portable zip. Release packages fo
 
 ## License
 
-MIT for the Cutline source code. Release packages bundle [FFmpeg](https://ffmpeg.org) (GPL build) and [Qt](https://www.qt.io) (LGPLv3), which keep their own licenses.
+Apache License 2.0 for the Cutline source code. Release packages bundle [FFmpeg](https://ffmpeg.org) (GPL build) and [Qt](https://www.qt.io) (LGPLv3), which keep their own licenses.

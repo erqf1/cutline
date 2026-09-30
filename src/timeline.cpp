@@ -106,6 +106,7 @@ void Timeline::paintEvent(QPaintEvent* ev) {
         }
         QString label = fmtTime(pc.outDur());
         if (pc.speed != 1.0) label += QString("  ×%1").arg(pc.speed, 0, 'g', 3);
+        if (std::abs(pc.volume - 1.0) > 0.004) label += QString("  ♪%1%").arg(qRound(pc.volume * 100));
         QFontMetrics fm(small);
         QRectF pill(r.left() + 8, r.bottom() - 21, fm.horizontalAdvance(label) + 12, 16);
         if (pill.right() < r.right()) {
@@ -248,7 +249,7 @@ void Timeline::mouseMoveEvent(QMouseEvent* e) {
         return;
     }
     if (drag_.kind == Drag::Seek) {
-        host_->seek(tOf(pos.x()));
+        host_->scrub(tOf(pos.x()));
     } else if (drag_.kind == Drag::Trim) {
         if (drag_.index >= pr.pieces.size()) return;
         Piece& pc = pr.pieces[drag_.index];
@@ -289,9 +290,9 @@ void Timeline::mouseMoveEvent(QMouseEvent* e) {
 }
 
 void Timeline::mouseReleaseEvent(QMouseEvent*) {
-    bool trimmed = drag_.kind == Drag::Trim;
+    bool settle = drag_.kind == Drag::Trim || drag_.kind == Drag::Seek;
     drag_.kind = Drag::None;
-    if (trimmed) host_->seek(host_->curTime());
+    if (settle) host_->seek(host_->curTime());
 }
 
 void Timeline::wheelEvent(QWheelEvent* e) {

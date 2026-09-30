@@ -52,8 +52,13 @@ MediaInfo probeMedia(const QString& path) {
         m.ok = true;
     }
     m.hasAudio = e.contains(QRegularExpression(R"(Stream #\d+:\d+.*Audio:)"));
-    auto v = QRegularExpression(R"(Stream #\d+:\d+.*Video:.*?(\d{2,5})x(\d{2,5}))").match(e);
-    if (v.hasMatch()) { m.w = v.captured(1).toInt(); m.h = v.captured(2).toInt(); }
+    // Cover-Bilder in Musikdateien ("attached pic") zählen nicht als Video
+    static const QRegularExpression vre(R"(Stream #\d+:\d+.*Video:.*?(\d{2,5})x(\d{2,5}))");
+    for (const QString& line : e.split('\n')) {
+        if (line.contains("attached pic")) continue;
+        auto v = vre.match(line);
+        if (v.hasMatch()) { m.w = v.captured(1).toInt(); m.h = v.captured(2).toInt(); break; }
+    }
     auto f = QRegularExpression(R"((\d+(?:\.\d+)?) fps)").match(e);
     if (f.hasMatch()) m.fps = f.captured(1).toDouble();
     return m;
@@ -117,9 +122,9 @@ QStringList buildExport(const Project& pr, const ExportOptions& o, const QString
                  .arg(p.src).arg(n(p.start)).arg(n(p.end)).arg(n(p.speed, 5)).arg(W).arg(H).arg(n(o.fps, 3)).arg(i);
         if (videoAudio) {
             if (pr.sources.value(p.src).hasAudio)
-                f << QString("[%1:a]atrim=start=%2:end=%3,asetpts=PTS-STARTPTS,%4,aresample=48000,"
+                f << QString("[%1:a]atrim=start=%2:end=%3,asetpts=PTS-STARTPTS,%4,volume=%6,aresample=48000,"
                              "aformat=sample_fmts=fltp:channel_layouts=stereo[a%5]")
-                         .arg(p.src).arg(n(p.start)).arg(n(p.end)).arg(atempoChain(p.speed)).arg(i);
+                         .arg(p.src).arg(n(p.start)).arg(n(p.end)).arg(atempoChain(p.speed)).arg(i).arg(n(p.volume, 3));
             else
                 f << QString("anullsrc=r=48000:cl=stereo:d=%1,aformat=sample_fmts=fltp[a%2]").arg(n(p.outDur())).arg(i);
         }

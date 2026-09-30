@@ -13,6 +13,7 @@
 #include <QHBoxLayout>
 #include <QMessageBox>
 #include <QMimeData>
+#include <QPainter>
 #include <QProgressDialog>
 #include <QSettings>
 #include <QUrl>
@@ -86,6 +87,14 @@ QWidget* MainWindow::buildInspector() {
     spSpeed_->setButtonSymbols(QAbstractSpinBox::NoButtons);
     connect(spSpeed_, &QDoubleSpinBox::editingFinished, this, [this] { setSpeed(spSpeed_->value()); });
     v->addWidget(spSpeed_);
+    lblPieceVol_ = new QLabel;
+    v->addWidget(lblPieceVol_);
+    sliderPieceVol_ = new QSlider(Qt::Horizontal);
+    sliderPieceVol_->setRange(0, 200);
+    sliderPieceVol_->setFocusPolicy(Qt::NoFocus);
+    connect(sliderPieceVol_, &QSlider::sliderPressed, this, &MainWindow::pushUndo);
+    connect(sliderPieceVol_, &QSlider::valueChanged, this, &MainWindow::setPieceVolume);
+    v->addWidget(sliderPieceVol_);
     lblPiece_ = new QLabel;
     lblPiece_->setObjectName("hint");
     lblPiece_->setWordWrap(true);
@@ -183,16 +192,10 @@ void MainWindow::buildUi() {
     top->setContentsMargins(0, 0, 0, 0);
     top->setSpacing(8);
     auto* bOpen = mk("open", "open_video", Ic::Open, nullptr, " (Ctrl+O)");
-    auto* bAddV = mk("add_video", nullptr, Ic::AddVideo);
-    auto* bAddA = mk("add_audio", nullptr, Ic::AddAudio);
     auto* bExp = mk("export", nullptr, Ic::Export, "primary", " (Ctrl+E)");
     connect(bOpen, &QPushButton::clicked, this, &MainWindow::openDialog);
-    connect(bAddV, &QPushButton::clicked, this, &MainWindow::addVideo);
-    connect(bAddA, &QPushButton::clicked, this, &MainWindow::addAudio);
     connect(bExp, &QPushButton::clicked, this, &MainWindow::exportVideo);
     top->addWidget(bOpen);
-    top->addWidget(bAddV);
-    top->addWidget(bAddA);
     top->addStretch();
     top->addWidget(bExp);
 
@@ -203,10 +206,23 @@ void MainWindow::buildUi() {
     bar->setSpacing(12);
     btnPlay_ = mk(nullptr, "play_tip", Ic::Play, "play");
     connect(btnPlay_, &QPushButton::clicked, this, &MainWindow::togglePlay);
-    slider_ = new QSlider(Qt::Horizontal);
+    slider_ = new SeekSlider;
     slider_->setRange(0, 10000);
     slider_->setFocusPolicy(Qt::NoFocus);
-    connect(slider_, &QSlider::sliderMoved, this, [this](int v) { seek(v / 10000.0 * pr_.total()); });
+    connect(slider_, &QSlider::sliderMoved, this, [this](int v) {
+        showScrubPreview(v);
+        scrub(v / 10000.0 * pr_.total());
+    });
+    connect(slider_, &QSlider::sliderReleased, this, [this] {
+        scrubPrev_->hide();
+        seek(slider_->value() / 10000.0 * pr_.total());
+    });
+    seekTimer_ = new QTimer(this);
+    seekTimer_->setSingleShot(true);
+    connect(seekTimer_, &QTimer::timeout, this, [this] {
+        seekThrottle_.restart();
+        seek(scrubTarget_);
+    });
     lblTime_ = new QLabel("00:00.0 / 00:00.0");
     lblVolIcon_ = new QLabel;
     auto* vol = new QSlider(Qt::Horizontal);
@@ -216,9 +232,11 @@ void MainWindow::buildUi() {
     vol->setFocusPolicy(Qt::NoFocus);
     connect(vol, &QSlider::valueChanged, this, [this](int v) {
         masterVol_ = v / 100.0;
-        audio_->setVolume(float(masterVol_));
+        applyPlayerVolume();
         updateAudio(false);
     });
+    btnAddMedia_ = mk("add_media", "add_media_tip", Ic::AddVideo);
+    connect(btnAddMedia_, &QPushButton::clicked, this, &MainWindow::addMedia);
     btnEdit_ = mk("edit", nullptr, Ic::Edit, nullptr, " (E)");
     btnEdit_->setCheckable(true);
     connect(btnEdit_, &QPushButton::toggled, this, &MainWindow::setEditMode);
@@ -229,6 +247,7 @@ void MainWindow::buildUi() {
     bar->addWidget(lblTime_);
     bar->addWidget(lblVolIcon_);
     bar->addWidget(vol);
+    bar->addWidget(btnAddMedia_);
     bar->addWidget(btnEdit_);
     bar->addWidget(bSet);
 
@@ -294,6 +313,10 @@ void MainWindow::buildUi() {
     fsHint_->setStyleSheet("color:#ffffff;background:rgba(0,0,0,0.65);border-radius:12px;padding:10px 18px;font-size:15px;font-weight:600;");
     fsHint_->hide();
     view_->installEventFilter(this);
+
+    scrubPrev_ = new QLabel(this);
+    scrubPrev_->setAttribute(Qt::WA_TransparentForMouseEvents);
+    scrubPrev_->hide();
 
     lblHint_ = new QLabel(view_);
     lblHint_->setStyleSheet("color:#8b90a0;font-size:17px;background:transparent");
@@ -367,6 +390,7 @@ void MainWindow::retranslate() {
     lblSpeed_->setText(T("speed"));
     lblStart_->setText(T("start_s"));
     lblEnd_->setText(T("end_s"));
+    lblPieceVol_->setText(T("volume"));
     lblHint_->move((view_->width() - lblHint_->width()) / 2, view_->height() / 2 - 10);
     refreshInspector();
     timeline_->update();
@@ -452,6 +476,7 @@ void MainWindow::applyLayoutVisibility() {
     topbar_->setVisible(!fullscreen_ && edit);  // obere Leiste nur beim Bearbeiten
     transport_->setVisible(!fullscreen_);
     tools_->setVisible(!fullscreen_ && edit);
+    btnAddMedia_->setVisible(edit);
     tlScroll_->setVisible(!fullscreen_ && edit);
     inspCard_->setVisible(!fullscreen_ && edit);
     if (fullscreen_) {
@@ -583,6 +608,7 @@ void MainWindow::onStatus(QMediaPlayer::MediaStatus st) {
         if (pending_) {
             pending_ = false;
             player_->setPlaybackRate(pendingRate_);
+            applyPlayerVolume();
             player_->setPosition(qint64(pendingPos_ * 1000));
             if (pendingPlay_) player_->play(); else player_->pause();
         }
@@ -657,12 +683,79 @@ void MainWindow::activate(int i, double srcPos, bool play) {
         return;
     }
     player_->setPlaybackRate(p.speed);
-    player_->setPosition(qint64(srcPos * 1000));
+    applyPlayerVolume();
+    // Nur springen, wenn es wirklich woanders hingeht; bis der Player angekommen ist, liefert er noch die alte Position
+    if (std::abs(player_->position() / 1000.0 - srcPos) > 0.04) {
+        player_->setPosition(qint64(srcPos * 1000));
+        seeking_ = true;
+        seekSrc_ = srcPos;
+        seekClock_.restart();
+    }
     if (play && player_->playbackState() != QMediaPlayer::PlayingState) player_->play();
+}
+
+void MainWindow::applyPlayerVolume() {
+    const double pv = cur_ >= 0 && cur_ < pr_.pieces.size() ? pr_.pieces[cur_].volume : 1.0;
+    audio_->setVolume(float(std::clamp(pv * masterVol_, 0.0, 1.0)));
+}
+
+// Beim Ziehen: Zeit/Anzeige sofort, echte Sprünge höchstens alle 120 ms (sonst staut sich der Decoder)
+void MainWindow::scrub(double t) {
+    if (pr_.pieces.isEmpty()) return;
+    scrubTarget_ = std::clamp(t, 0.0, pr_.total());
+    const qint64 since = seekThrottle_.isValid() ? seekThrottle_.elapsed() : 1000;
+    if (since >= 120) {
+        seekTimer_->stop();
+        seekThrottle_.restart();
+        seek(scrubTarget_);
+        return;
+    }
+    t_ = scrubTarget_;
+    updateUi();
+    if (!seekTimer_->isActive()) seekTimer_->start(int(120 - since));
+}
+
+// Vorschaubild + Zeit über dem Regler (sofort, ohne auf den Decoder zu warten)
+void MainWindow::showScrubPreview(int v) {
+    if (pr_.pieces.isEmpty()) return;
+    const double t = v / 10000.0 * pr_.total();
+    double src = 0;
+    const int i = pr_.locate(t, &src);
+    QImage thumb;
+    if (const ThumbSet* ts = thumbs(pr_.pieces[i].src); ts && !ts->imgs.isEmpty())
+        thumb = ts->imgs[std::clamp(int(src / ts->step), 0, int(ts->imgs.size()) - 1)]
+                    .scaledToHeight(96, Qt::SmoothTransformation);
+    const QString label = fmtTime(t);
+    QFont f = font();
+    f.setBold(true);
+    const QFontMetrics fm(f);
+    const int w = std::max(thumb.isNull() ? 0 : thumb.width() + 8, fm.horizontalAdvance(label) + 20);
+    const int h = (thumb.isNull() ? 0 : thumb.height() + 4) + fm.height() + 12;
+    QPixmap pm(w * devicePixelRatio(), h * devicePixelRatio());
+    pm.setDevicePixelRatio(devicePixelRatio());
+    pm.fill(Qt::transparent);
+    QPainter p(&pm);
+    p.setRenderHint(QPainter::Antialiasing);
+    p.setPen(QColor(255, 255, 255, 60));
+    p.setBrush(QColor(12, 13, 18, 230));
+    p.drawRoundedRect(QRectF(0.5, 0.5, w - 1, h - 1), 10, 10);
+    if (!thumb.isNull()) p.drawImage(QPoint((w - thumb.width()) / 2, 4), thumb);
+    p.setFont(f);
+    p.setPen(Qt::white);
+    p.drawText(QRect(0, h - fm.height() - 8, w, fm.height() + 4), Qt::AlignCenter, label);
+    p.end();
+    scrubPrev_->setPixmap(pm);
+    scrubPrev_->resize(w, h);
+    const QPoint base = slider_->mapTo(this, QPoint(0, 0));
+    const int hx = base.x() + 7 + int(double(v) / slider_->maximum() * (slider_->width() - 14));
+    scrubPrev_->move(std::clamp(hx - w / 2, 4, width() - w - 4), base.y() - h - 8);
+    scrubPrev_->show();
+    scrubPrev_->raise();
 }
 
 void MainWindow::seek(double t) {
     if (pr_.pieces.isEmpty()) return;
+    seekTimer_->stop();  // ein direkter Sprung ersetzt einen noch ausstehenden gedrosselten
     t = std::clamp(t, 0.0, pr_.total());
     double src = 0;
     int i = pr_.locate(t, &src);
@@ -678,6 +771,10 @@ void MainWindow::tick() {
     cur_ = std::min<int>(cur_, pr_.pieces.size() - 1);
     const Piece* p = &pr_.pieces[cur_];
     double src = player_->position() / 1000.0;
+    if (seeking_) {  // Sprung noch unterwegs: alte Position nicht anzeigen
+        if (std::abs(src - seekSrc_) < 0.75 || seekClock_.elapsed() > 2000) seeking_ = false;
+        else return;
+    }
     bool ended = player_->mediaStatus() == QMediaPlayer::EndOfMedia;
     if (src >= p->end - 0.03 || ended) {
         if (cur_ + 1 < pr_.pieces.size()) {
@@ -885,7 +982,7 @@ void MainWindow::refreshInspector() {
         lblItem_->setText(T("audio_el"));
         { QSignalBlocker b(spT0_); spT0_->setValue(au->t0); }
         { QSignalBlocker b(spT1_); spT1_->setValue(au->t0 + au->dur); }
-        lblStr_->setText(T("volume"));
+        lblStr_->setText(T("volume") + QString("  %1 %").arg(qRound(au->volume * 100)));
         QSignalBlocker b(sliderStr_);
         sliderStr_->setRange(0, 200);
         sliderStr_->setValue(int(au->volume * 100));
@@ -902,6 +999,8 @@ void MainWindow::refreshInspector() {
         const Piece& p = pr_.pieces[selPiece_];
         insp_->setCurrentIndex(1);
         { QSignalBlocker b(spSpeed_); spSpeed_->setValue(p.speed); }
+        { QSignalBlocker b(sliderPieceVol_); sliderPieceVol_->setValue(qRound(p.volume * 100)); }
+        lblPieceVol_->setText(T("volume") + QString("  %1 %").arg(qRound(p.volume * 100)));
         lblPiece_->setText(T("source_range").arg(fmtTime(p.start), fmtTime(p.end)) + "\n" +
                            T("result_dur").arg(fmtTime(p.outDur())));
     } else {
@@ -915,6 +1014,14 @@ void MainWindow::setSpeed(double s) {
         pr_.pieces[selPiece_].speed = s;
         modelEdited();
     }
+}
+
+void MainWindow::setPieceVolume(int v) {
+    if (selPiece_ < 0 || selPiece_ >= pr_.pieces.size()) return;
+    pr_.pieces[selPiece_].volume = v / 100.0;
+    lblPieceVol_->setText(T("volume") + QString("  %1 %").arg(v));
+    applyPlayerVolume();
+    timeline_->update();
 }
 
 void MainWindow::itemTimesChanged() {
@@ -938,6 +1045,7 @@ void MainWindow::itemTimesChanged() {
 void MainWindow::sliderChanged(int v) {
     if (AudioClip* a = selAudio_ ? pr_.audio(selAudio_) : nullptr) {
         a->volume = v / 100.0;
+        lblStr_->setText(T("volume") + QString("  %1 %").arg(v));
         updateAudio(false);
         return;
     }
@@ -1065,14 +1173,25 @@ void MainWindow::addImage() {
     newItem(it);
 }
 
-// Weiteres Video an der Playhead-Position einfügen
-void MainWindow::addVideo() {
-    if (pr_.pieces.isEmpty()) return openDialog();
-    QString f = QFileDialog::getOpenFileName(this, T("open_video"), QString(),
-                                             "Video (*.mp4 *.mov *.mkv *.m4v *.avi *.webm *.wmv *.flv);;*.*");
+// Ein Knopf für Video und Ton: die Art wird an der Datei erkannt
+void MainWindow::addMedia() {
+    QString f = QFileDialog::getOpenFileName(
+        this, T("add_media"), QString(),
+        T("media_files") + " (*.mp4 *.mov *.mkv *.m4v *.avi *.webm *.wmv *.flv *.ts "
+                           "*.mp3 *.wav *.m4a *.aac *.flac *.ogg *.opus *.wma);;*.*");
     if (f.isEmpty()) return;
+    if (pr_.pieces.isEmpty()) return openFile(f);
     MediaInfo mi = probeMedia(f);
-    if (!mi.ok || mi.duration <= 0) return;
+    if (!mi.ok || mi.duration <= 0) {
+        QMessageBox::warning(this, "Cutline", T("media_unreadable"));
+        return;
+    }
+    if (mi.w > 0 && mi.h > 0) addVideoFile(f, mi);
+    else addAudioFile(f, mi);
+}
+
+// Weiteres Video an der Playhead-Position einfügen
+void MainWindow::addVideoFile(const QString& f, const MediaInfo& mi) {
     pushUndo();
     Source s;
     s.path = f; s.duration = mi.duration; s.fps = mi.fps; s.hasAudio = mi.hasAudio; s.probed = true;
@@ -1094,7 +1213,7 @@ void MainWindow::addVideo() {
         pr_.pieces.insert(i + 1, rest);
         at = i + 1;
     }
-    pr_.pieces.insert(at, Piece{si, 0.0, mi.duration, 1.0});
+    pr_.pieces.insert(at, Piece{si, 0.0, mi.duration, 1.0, 1.0});
     selPiece_ = at;
     selItem_ = selAudio_ = 0;
     t_ = pr_.outStart(at);
@@ -1102,13 +1221,7 @@ void MainWindow::addVideo() {
     modelEdited();
 }
 
-void MainWindow::addAudio() {
-    if (pr_.pieces.isEmpty()) return;
-    QString f = QFileDialog::getOpenFileName(this, T("choose_audio"), QString(),
-                                             "Audio (*.mp3 *.wav *.m4a *.aac *.flac *.ogg *.opus *.wma);;*.*");
-    if (f.isEmpty()) return;
-    MediaInfo mi = probeMedia(f);
-    if (!mi.ok || mi.duration <= 0) return;
+void MainWindow::addAudioFile(const QString& f, const MediaInfo& mi) {
     AudioClip a;
     a.id = pr_.nextId++;
     a.path = f;
@@ -1209,9 +1322,16 @@ void MainWindow::selfShots(const QString& dir) {
         doSplit();
         addBlur();
         seek(2.5);
+        selectPiece(0);
+        sliderPieceVol_->setValue(50);
+        // Spulen: viele Ziehschritte hintereinander dürfen den Player nicht fluten
+        for (int k = 0; k < 40; ++k) scrub(pr_.total() * k / 40.0);
+        seek(1.0);
+        showScrubPreview(4200);
     });
     QTimer::singleShot(5500, this, [=] {
         shot("b_edit");
+        scrubPrev_->hide();
         enterFullscreen();
     });
     QTimer::singleShot(7500, this, [=] {
