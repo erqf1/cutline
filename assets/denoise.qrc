@@ -1,0 +1,5 @@
+<RCC>
+  <qresource prefix="/denoise">
+    <file alias="lq.rnnn">denoise/lq.rnnn</file>
+  </qresource>
+</RCC>

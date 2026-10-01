@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(Cutline VERSION 1.5.3 LANGUAGES CXX)
+project(Cutline VERSION 1.6.0 LANGUAGES CXX)
 if(WIN32)
     enable_language(RC)
 endif()
@@ -37,6 +37,7 @@ set(CUTLINE_SOURCES
     src/textrender.h
     src/textrender.cpp
     assets/fonts.qrc
+    assets/denoise.qrc
 )
 
 if(WIN32)

@@ -4,6 +4,9 @@
 
 #include <QCoreApplication>
 #include <QFileInfo>
+#include <QStandardPaths>
+#include <QFile>
+#include <QDir>
 #include <QProcess>
 #include <QRegularExpression>
 
@@ -114,6 +117,27 @@ bool isAudioFormat(const QString& f) { return f == "mp3" || f == "wav" || f == "
 
 static int even(double v) { return std::max(2, int(std::lround(v / 2.0)) * 2); }
 
+QString denoiseModelPath() {
+    const QString dir = QStandardPaths::writableLocation(QStandardPaths::AppLocalDataLocation);
+    QDir().mkpath(dir);
+    const QString path = dir + "/lq.rnnn";
+    QFile res(":/denoise/lq.rnnn");
+    if (QFileInfo(path).size() != res.size()) {
+        QFile::remove(path);
+        res.copy(path);
+    }
+    return path;
+}
+
+namespace {
+// Klicks (Tastatur/Maus) entfernen, dann RNNoise gegen Rauschen; Pfad für den Filtergraphen maskiert
+QString denoiseFilter() {
+    QString m = QDir::fromNativeSeparators(denoiseModelPath());
+    m.replace("'", "\\'").replace(":", "\\:");
+    return QString("adeclick,arnndn=m='%1',").arg(m);
+}
+}  // namespace
+
 QStringList buildExport(const Project& pr, const ExportOptions& o, const QString& out) {
     auto n = [](double v, int d = 4) { return QString::number(v, 'f', d); };
     const double total = pr.total();
@@ -164,11 +188,12 @@ QStringList buildExport(const Project& pr, const ExportOptions& o, const QString
         }
         if (videoAudio) {
             if (pr.sources.value(p.src).hasAudio)
+                // %8: Rauschunterdrückung (Klicks raus, dann RNNoise) - nur wenn angehakt
                 // apad: ist der Ton kürzer als das Bild, mit Stille auffüllen (sonst verrutscht alles danach)
-                f << QString("[%1:a]atrim=start=%2:end=%3,asetpts=PTS-STARTPTS,%4,volume=%6,aresample=48000,"
+                f << QString("[%1:a]atrim=start=%2:end=%3,asetpts=PTS-STARTPTS,%4,volume=%6,aresample=48000,%8"
                              "aformat=sample_fmts=fltp:channel_layouts=stereo,apad=whole_dur=%7,atrim=end=%7[a%5]")
                          .arg(p.src).arg(n(p.start)).arg(n(p.end)).arg(atempoChain(p.speed)).arg(i).arg(n(p.volume, 3))
-                         .arg(n(p.outDur()));
+                         .arg(n(p.outDur())).arg(p.denoise ? denoiseFilter() : QString());
             else
                 f << QString("anullsrc=r=48000:cl=stereo:d=%1,aformat=sample_fmts=fltp[a%2]").arg(n(p.outDur())).arg(i);
         }
@@ -224,10 +249,10 @@ QStringList buildExport(const Project& pr, const ExportOptions& o, const QString
         QString mix = "[abase]";
         for (int i = 0; i < pr.audios.size(); ++i) {
             const AudioClip& a = pr.audios[i];
-            f << QString("[%1:a]atrim=start=%2:end=%3,asetpts=PTS-STARTPTS,volume=%4,aresample=48000,"
+            f << QString("[%1:a]atrim=start=%2:end=%3,asetpts=PTS-STARTPTS,volume=%4,aresample=48000,%7"
                          "aformat=sample_fmts=fltp:channel_layouts=stereo,adelay=%5:all=1[c%6]")
                      .arg(audIn[i]).arg(n(a.srcStart)).arg(n(a.srcStart + a.dur)).arg(n(a.volume, 3))
-                     .arg(int(a.t0 * 1000)).arg(i);
+                     .arg(int(a.t0 * 1000)).arg(i).arg(a.denoise ? denoiseFilter() : QString());
             mix += QString("[c%1]").arg(i);
         }
         if (pr.audios.isEmpty()) f.replaceInStrings("[abase]", "[aout]");

@@ -246,6 +246,7 @@ private:
     QLabel *lblTime_, *lblHint_, *lblPiece_, *lblItem_, *lblStr_;
     QLabel *lblInspHint_, *lblSegment_, *lblSpeed_, *lblStart_, *lblEnd_, *lblPieceVol_;
     QSlider *sliderPieceVol_, *sliderSpeed_;
+    QCheckBox *chkPieceDenoise_, *chkAudioDenoise_;
     QPushButton* btnDelEl_;
     QWidget *topbar_, *transport_, *tools_;
     QStackedWidget* insp_;

@@ -19,6 +19,7 @@ struct Piece {
     int src = 0;
     double start = 0, end = 0, speed = 1.0;
     double volume = 1.0;  // Lautstärke des Video-Tons in diesem Abschnitt (0..6 = bis 600 %)
+    bool denoise = false;  // Rauschunterdrückung (Klicks, Rauschen) beim Export
     // Bild anpassen: Größe (1 = eingepasst), Verschiebung als Anteil der Bildfläche, Drehung in Grad
     double scale = 1.0, px = 0, py = 0, rot = 0;
     double outDur() const { return (end - start) / speed; }
@@ -50,6 +51,7 @@ struct AudioClip {
     double dur = 0;       // Länge in der Ausgabe
     double fileDur = 0;
     double volume = 1.0;
+    bool denoise = false;  // Rauschunterdrückung beim Export
 };
 
 struct Snapshot {
@@ -125,6 +127,8 @@ struct MediaInfo {
 
 // ---- ffmpeg
 QString ffmpegPath();
+// RNNoise-Modell für ffmpegs arnndn (aus den Ressourcen in den Cache entpackt)
+QString denoiseModelPath();
 QString detectEncoder();
 MediaInfo probeMedia(const QString& path);
 

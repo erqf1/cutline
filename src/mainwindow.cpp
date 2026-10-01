@@ -162,6 +162,16 @@ QWidget* MainWindow::buildInspector() {
     connect(sliderPieceVol_, &QSlider::sliderPressed, this, &MainWindow::pushUndo);
     connect(sliderPieceVol_, &QSlider::valueChanged, this, &MainWindow::setPieceVolume);
     v->addWidget(sliderPieceVol_);
+    // Rauschunterdrückung (Tastatur/Maus/Rauschen) für den Ton dieses Abschnitts - wirkt beim Export
+    chkPieceDenoise_ = new QCheckBox;
+    chkPieceDenoise_->setFocusPolicy(Qt::NoFocus);
+    connect(chkPieceDenoise_, &QCheckBox::toggled, this, [this](bool on) {
+        if (selPiece_ < 0 || selPiece_ >= pr_.pieces.size()) return;
+        pushUndo();
+        pr_.pieces[selPiece_].denoise = on;
+        modelEdited(true);
+    });
+    v->addWidget(chkPieceDenoise_);
 
     // Bild anpassen: Größe, Position, Drehung (wie in gängigen Schnittprogrammen)
     auto spin = [](double lo, double hi, int dec, const QString& suffix) {
@@ -268,6 +278,16 @@ QWidget* MainWindow::buildInspector() {
     connect(sliderStr_, &QSlider::sliderPressed, this, &MainWindow::pushUndo);
     connect(sliderStr_, &QSlider::valueChanged, this, &MainWindow::sliderChanged);
     v->addWidget(sliderStr_);
+    chkAudioDenoise_ = new QCheckBox;
+    chkAudioDenoise_->setFocusPolicy(Qt::NoFocus);
+    connect(chkAudioDenoise_, &QCheckBox::toggled, this, [this](bool on) {
+        AudioClip* a = selAudio_ ? pr_.audio(selAudio_) : nullptr;
+        if (!a) return;
+        pushUndo();
+        a->denoise = on;
+        modelEdited(true);
+    });
+    v->addWidget(chkAudioDenoise_);
 
     textBox_ = new QWidget;
     auto* tv = new QVBoxLayout(textBox_);
@@ -630,6 +650,10 @@ void MainWindow::retranslate() {
     aspectBox_->setToolTip(T("aspect_tip"));
     lblColors_->setText(T("color"));
     chkBg_->setText(T("background"));
+    for (QCheckBox* c : {chkPieceDenoise_, chkAudioDenoise_}) {
+        c->setText(T("denoise"));
+        c->setToolTip(T("denoise_tip"));
+    }
     lblBinHint_->setText(bin_->count() ? T("bin_hint") : T("bin_empty"));
     textEdit_->setPlaceholderText(T("text_ph"));
     lblHint_->move((view_->width() - lblHint_->width()) / 2, view_->height() / 2 - 10);
@@ -1283,6 +1307,7 @@ void MainWindow::refreshInspector() {
         textUndo_ = false;
     }
     textBox_->setVisible(it && it->kind == Item::Text);
+    chkAudioDenoise_->setVisible(au != nullptr);
     sliderStr_->setVisible(true);
     lblStr_->setVisible(true);
     if (au) {
@@ -1294,6 +1319,7 @@ void MainWindow::refreshInspector() {
         QSignalBlocker b(sliderStr_);
         sliderStr_->setRange(0, 600);  // bis 600 %
         sliderStr_->setValue(int(au->volume * 100));
+        { QSignalBlocker c(chkAudioDenoise_); chkAudioDenoise_->setChecked(au->denoise); }
     } else if (it) {
         insp_->setCurrentIndex(2);
         lblItem_->setText(it->kind == Item::Image ? T("image") : it->kind == Item::Text ? T("text") : T("blur_area"));
@@ -1323,6 +1349,8 @@ void MainWindow::refreshInspector() {
         { QSignalBlocker b(spSpeed_); spSpeed_->setValue(p.speed); }
         { QSignalBlocker b(sliderSpeed_); sliderSpeed_->setValue(nearestSpeedStep(p.speed)); }
         { QSignalBlocker b(sliderPieceVol_); sliderPieceVol_->setValue(qRound(p.volume * 100)); }
+        { QSignalBlocker b(chkPieceDenoise_); chkPieceDenoise_->setChecked(p.denoise); }
+        chkPieceDenoise_->setVisible(pr_.sources.value(p.src).hasAudio);
         lblPieceVol_->setText(T("volume") + QString("  %1 %").arg(qRound(p.volume * 100)));
         { QSignalBlocker b(sliderScale_); sliderScale_->setValue(qRound(p.scale * 100)); }
         { QSignalBlocker b(spScale_); spScale_->setValue(p.scale * 100); }
@@ -2021,6 +2049,7 @@ void MainWindow::aspectShots(const QString& dir) {
         eo.format = "mp4";
         log(QString("export %1x%2").arg(eo.width).arg(eo.height));
         Project ep = pr_;
+        for (Piece& p : ep.pieces) p.denoise = true;  // Rauschunterdrückung im Export mittesten
         for (Item& it : ep.items)
             if (it.kind == Item::Text) {
                 it.path = dir + QString("/text%1.png").arg(it.id);
@@ -2029,7 +2058,7 @@ void MainWindow::aspectShots(const QString& dir) {
         QProcess pr;
         pr.start(ffmpegPath(), buildExport(ep, eo, dir + "/export_9_16.mp4"));
         pr.waitForFinished(180000);
-        log(QString("export exit=%1 %2").arg(pr.exitCode()).arg(QString::fromUtf8(pr.readAllStandardError().right(800))));
+        log(QString("export exit=%1 %2").arg(pr.exitCode()).arg(QString::fromUtf8(pr.readAllStandardError().left(3000))));
         setAspect(3);  // 1:1
         log(QString("1:1 canvas=%1x%2").arg(pr_.vw).arg(pr_.vh));
     });
