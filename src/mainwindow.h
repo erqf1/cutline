@@ -66,6 +66,7 @@ public:
     void openFile(const QString& path);
     void selfShots(const QString& dir);
     void aspectShots(const QString& dir);  // Entwickler-Test: Bildformat umstellen, rendern, exportieren
+    void fsShots(const QString& dir);      // Entwickler-Test: Vollbild-Steuerung ein-/ausblenden
 
     // EditorHost
     Project& pr() override { return pr_; }
@@ -119,6 +120,9 @@ private:
     void applyShortcuts();      // Tastenkürzel aus den Einstellungen übernehmen (auch Tooltips)
     void toggleFsBar();         // Leiste im Vollbild ein-/ausblenden
     void updateFsBar();
+    void wakeFsControls(bool showCursor = true);  // Vollbild: Steuerung nach Mausbewegung wieder zeigen
+    bool fsControlsShown() const;
+    bool playingIntent() const;  // spielt (oder soll nach dem Laden weiterspielen)
     void applyTheme();
     void retranslate();
     void updatePlayIcon();
@@ -228,10 +232,11 @@ private:
     std::map<QString, QAction*> scActions_;  // Tastenkürzel nach Kennung (shortcuts.h)
     // Vollbild: kleine Leiste über dem Bild (Pause, Fortschritt, Zeit, Ausblenden)
     QFrame* fsBar_ = nullptr;
-    QPushButton *fsPlay_ = nullptr, *fsHide_ = nullptr, *fsShow_ = nullptr;
+    QPushButton *fsPlay_ = nullptr, *fsHide_ = nullptr;
     QSlider* fsSlider_ = nullptr;
     QLabel* fsTime_ = nullptr;
-    bool fsBarVisible_ = true;
+    bool fsBarVisible_ = true;  // Einstellung: Leiste beim Abspielen zeigen (pausiert ist sie immer da)
+    bool fsIdle_ = false;       // beim Abspielen eine Weile keine Maus bewegt -> Steuerung ausgeblendet
     Osd* osd_ = nullptr;  // Symbol in der Bildmitte bei Pause/Abspielen/Spulen (wie bei YouTube)
     QPushButton *tabMedia_, *tabProps_;
     QListWidget* bin_;

@@ -82,5 +82,6 @@ int main(int argc, char* argv[]) {
         QTimer::singleShot(0, &w, [&w, path = args[1]] { w.openFile(path); });
     if (args.size() > 3 && args[2] == "--shots") w.selfShots(args[3]);
     if (args.size() > 3 && args[2] == "--aspectshots") w.aspectShots(args[3]);
+    if (args.size() > 3 && args[2] == "--fsshots") w.fsShots(args[3]);
     return app.exec();
 }

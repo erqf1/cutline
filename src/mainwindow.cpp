@@ -3,6 +3,7 @@
 #include <QAction>
 #include <QButtonGroup>
 #include <QColorDialog>
+#include <QCursor>
 #include <QFontDatabase>
 #include <QScrollBar>
 #include <QAudioDevice>
@@ -508,22 +509,25 @@ void MainWindow::buildUi() {
     timer_ = new QTimer(this);
     timer_->setInterval(15);
     connect(timer_, &QTimer::timeout, this, &MainWindow::tick);
+    // Vollbild beim Abspielen: ohne Mausbewegung verschwinden Leiste, Knöpfe und Mauszeiger nach kurzer Zeit.
+    // Pausiert bleibt die Steuerung immer stehen.
     cursorTimer_ = new QTimer(this);
     cursorTimer_->setSingleShot(true);
-    cursorTimer_->setInterval(1800);
+    cursorTimer_->setInterval(2500);
     connect(cursorTimer_, &QTimer::timeout, this, [this] {
-        if (fullscreen_) {
-            view_->viewport()->setCursor(Qt::BlankCursor);
-            fsBtn_->hide();
-            if (fsShow_) fsShow_->hide();
+        if (!fullscreen_ || !playingIntent()) return;
+        const QPoint m = view_->mapFromGlobal(QCursor::pos());
+        const bool onControls = (fsBar_->isVisible() && fsBar_->geometry().contains(m)) ||
+                                (fsBtn_->isVisible() && fsBtn_->geometry().contains(m)) || fsSlider_->isSliderDown();
+        if (onControls) {  // Maus liegt auf der Leiste: stehen lassen
+            cursorTimer_->start();
+            return;
         }
+        fsIdle_ = true;
+        view_->viewport()->setCursor(Qt::BlankCursor);
+        placeVideoControls();
     });
-    connect(view_, &VideoView::mouseActivity, this, [this] {
-        view_->viewport()->unsetCursor();
-        fsBtn_->show();
-        if (fsShow_) fsShow_->setVisible(fullscreen_ && !fsBarVisible_);
-        if (fullscreen_) cursorTimer_->start();
-    });
+    connect(view_, &VideoView::mouseActivity, this, [this] { wakeFsControls(); });
 
     // Obere Leiste
     topbar_ = new QWidget;
@@ -695,17 +699,6 @@ void MainWindow::buildUi() {
         if (seekTimer_->isActive() || std::abs(t - lastSeekT_) > 0.01) seek(t);
     });
     fsBar_->hide();
-    // Ausgeblendet: kleiner Knopf zum Zurückholen (erscheint wie der Vollbild-Knopf bei Mausbewegung)
-    fsShow_ = new QPushButton(view_);
-    fsShow_->setObjectName("vidbtn");
-    fsShow_->setFixedSize(40, 40);
-    fsShow_->setIconSize(QSize(18, 18));
-    fsShow_->setFocusPolicy(Qt::NoFocus);
-    fsShow_->setCursor(Qt::PointingHandCursor);
-    fsShow_->setIcon(makeIcon(Ic::ChevronUp, Qt::white));
-    fsShow_->setStyleSheet(fsBtn_->styleSheet());
-    connect(fsShow_, &QPushButton::clicked, this, &MainWindow::toggleFsBar);
-    fsShow_->hide();
     fsHint_ = new QLabel(view_);
     fsHint_->setAlignment(Qt::AlignCenter);
     fsHint_->setStyleSheet("color:#ffffff;background:rgba(0,0,0,0.65);border-radius:12px;padding:10px 18px;font-size:15px;font-weight:600;");
@@ -741,10 +734,12 @@ void MainWindow::buildUi() {
     addShortcut("back", [this] {
         seek(t_ - 5.0);
         if (osd_ && !pr_.pieces.isEmpty()) osd_->flash(Osd::Back);
+        wakeFsControls(false);  // wie bei YouTube: beim Spulen kurz zeigen, wo man ist
     });
     addShortcut("fwd", [this] {
         seek(t_ + 5.0);
         if (osd_ && !pr_.pieces.isEmpty()) osd_->flash(Osd::Forward);
+        wakeFsControls(false);
     });
     osd_ = new Osd(view_);
     fsBarVisible_ = QSettings().value("fsBar", true).toBool();
@@ -803,24 +798,50 @@ void MainWindow::updatePlayIcon() {
 void MainWindow::toggleFsBar() {
     fsBarVisible_ = !fsBarVisible_;
     QSettings().setValue("fsBar", fsBarVisible_);
+    fsIdle_ = false;
+    if (fullscreen_) cursorTimer_->start();
     placeVideoControls();
+}
+
+bool MainWindow::playingIntent() const {
+    // Beim Wechsel auf ein anderes Video pausiert der Player kurz - das zählt nicht als Pause
+    return player_->playbackState() == QMediaPlayer::PlayingState || (pending_ && pendingPlay_);
+}
+
+// Vollbild-Steuerung: pausiert immer da. Beim Abspielen nur nach Mausbewegung (verschwindet kurz danach
+// wieder) - und gar nicht, wenn man die Leiste ausgeblendet hat.
+bool MainWindow::fsControlsShown() const {
+    if (!fullscreen_) return false;
+    if (!playingIntent()) return true;
+    return fsBarVisible_ && !fsIdle_;
+}
+
+void MainWindow::wakeFsControls(bool showCursor) {
+    if (showCursor) view_->viewport()->unsetCursor();
+    if (!fullscreen_) return;
+    cursorTimer_->start();
+    if (fsIdle_) {
+        fsIdle_ = false;
+        placeVideoControls();
+    }
 }
 
 // Leiste: nur im Vollbild, schmal und mittig über dem unteren Bildrand
 void MainWindow::updateFsBar() {
     if (!fsBar_) return;
-    const bool show = fullscreen_ && fsBarVisible_;
+    const bool show = fsControlsShown();
     const int w = std::min(view_->width() - 28, 900);
     fsBar_->setGeometry((view_->width() - w) / 2, view_->height() - fsBar_->height() - 14, w, fsBar_->height());
     fsBar_->setVisible(show);
     if (show) fsBar_->raise();
+    fsBtn_->setVisible(!fullscreen_ || show);
+    // Ausgeblendet ist die Leiste nur beim Pausieren zu sehen - der Knopf holt sie dann fürs Abspielen zurück
+    const char* what = fsBarVisible_ ? "fsbar_hide" : "fsbar_show";
     const QString key = shortcutText("bar");
-    fsHide_->setText(" " + T("fsbar_hide") + (key.isEmpty() ? QString() : "  " + key));
-    fsHide_->setToolTip(T("fsbar_hide") + (key.isEmpty() ? QString() : " (" + key + ")"));
-    fsShow_->setToolTip(T("fsbar_show") + (key.isEmpty() ? QString() : " (" + key + ")"));
+    fsHide_->setIcon(makeIcon(fsBarVisible_ ? Ic::ChevronDown : Ic::ChevronUp, Qt::white));
+    fsHide_->setText(" " + T(what) + (key.isEmpty() ? QString() : "  " + key));
+    fsHide_->setToolTip(T(what) + (key.isEmpty() ? QString() : " (" + key + ")"));
     fsPlay_->setToolTip(T("sc_play") + " (" + shortcutText("play") + ")");
-    if (!fullscreen_ || fsBarVisible_) fsShow_->hide();
-    else if (fsBtn_->isVisible()) fsShow_->show();
     updatePlayIcon();
     updateUi();
 }
@@ -881,10 +902,6 @@ void MainWindow::placeVideoControls() {
     const int bottom = fsBar_ && fsBar_->isVisible() ? fsBar_->y() - 10 : view_->height() - 14;
     fsBtn_->move(view_->width() - fsBtn_->width() - 14, bottom - fsBtn_->height());
     fsBtn_->raise();
-    if (fsShow_) {
-        fsShow_->move((view_->width() - fsShow_->width()) / 2, view_->height() - fsShow_->height() - 14);
-        fsShow_->raise();
-    }
     if (fsHint_->isVisible()) {
         fsHint_->adjustSize();
         fsHint_->move((view_->width() - fsHint_->width()) / 2, 40);
@@ -988,12 +1005,14 @@ void MainWindow::enterFullscreen() {
     view_->setStyleSheet("QGraphicsView { border-radius: 0; }");
     showFullScreen();
     for (Overlay* ov : overlays_) { ov->setAcceptedMouseButtons(Qt::NoButton); ov->update(); }
+    fsIdle_ = false;
     cursorTimer_->start();
     QTimer::singleShot(150, this, [this] { placeVideoControls(); showFullscreenHint(); });
 }
 
 void MainWindow::exitFullscreen() {
     fullscreen_ = false;
+    fsIdle_ = false;
     cursorTimer_->stop();
     view_->viewport()->unsetCursor();
     view_->setStyleSheet(QString());
@@ -1186,6 +1205,16 @@ void MainWindow::onState(QMediaPlayer::PlaybackState st) {
     else timer_->stop();
     updatePlayIcon();
     updateAudio(true);
+    // Vollbild: pausiert sofort Steuerung + Mauszeiger zeigen; beim Abspielen blendet sie sich bald aus
+    if (fullscreen_) {
+        if (!playingIntent()) {
+            fsIdle_ = false;
+            view_->viewport()->unsetCursor();
+        } else if (!fsIdle_) {
+            cursorTimer_->start();
+        }
+        placeVideoControls();
+    }
 }
 
 void MainWindow::togglePlay() {
@@ -2267,6 +2296,43 @@ void MainWindow::selfShots(const QString& dir) {
             }
             QApplication::quit();
         });
+    });
+}
+
+void MainWindow::fsShots(const QString& dir) {
+    const QVariant oldPref = QSettings().value("fsBar");
+    fsBarVisible_ = true;
+    auto step = [this, dir](const QString& name) {
+        grab().save(dir + "/fs_" + name + ".png");
+        QFile f(dir + "/fs.txt");
+        f.open(QIODevice::Append | QIODevice::Text);
+        f.write(QString("%1: bar=%2 fsBtn=%3 cursorBlank=%4 playing=%5 button=\"%6\"\n")
+                    .arg(name)
+                    .arg(fsBar_->isVisible())
+                    .arg(fsBtn_->isVisible())
+                    .arg(view_->viewport()->cursor().shape() == Qt::BlankCursor)
+                    .arg(playingIntent())
+                    .arg(fsHide_->text().trimmed())
+                    .toUtf8());
+    };
+    auto at = [this](int ms, std::function<void()> fn) { QTimer::singleShot(ms, this, fn); };
+    at(2500, [=] { enterFullscreen(); togglePlay(); });
+    at(3000, [=] { step("1_play_start"); });
+    at(6200, [=] { step("2_play_idle"); emit view_->mouseActivity(); });
+    at(6400, [=] { step("3_mouse"); togglePlay(); });
+    at(6600, [=] { step("4_paused"); });
+    at(9600, [=] { step("5_paused_wait"); toggleFsBar(); });
+    at(9800, [=] { step("6_paused_hidden"); togglePlay(); });
+    at(10100, [=] { step("7_play_hidden"); emit view_->mouseActivity(); });
+    at(10300, [=] { step("8_play_hidden_mouse"); scActions_["fwd"]->trigger(); });
+    at(10500, [=] { step("9_play_hidden_seek"); togglePlay(); });
+    at(10700, [=] { step("10_pause_hidden"); toggleFsBar(); togglePlay(); });
+    at(10900, [=] { step("11_play_shown"); scActions_["fwd"]->trigger(); });
+    at(11000, [=] { step("12_play_seek"); exitFullscreen(); });
+    at(11500, [=] {
+        step("13_windowed");
+        oldPref.isValid() ? QSettings().setValue("fsBar", oldPref) : QSettings().remove("fsBar");
+        QApplication::quit();
     });
 }
 
