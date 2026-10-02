@@ -131,6 +131,7 @@ private:
     void toggleFullscreen();
     void placeVideoControls();
     void showFullscreenHint();
+    void showVideoHint(const QString& text, int ms);  // kurzer Hinweis oben im Bild
     void enterFullscreen();
     void exitFullscreen();
     void openDialog();
@@ -233,9 +234,11 @@ private:
     // Vollbild: kleine Leiste über dem Bild (Pause, Fortschritt, Zeit, Ausblenden)
     QFrame* fsBar_ = nullptr;
     QPushButton *fsPlay_ = nullptr, *fsHide_ = nullptr;
+    QLabel *fsHideIcon_ = nullptr, *fsHideText_ = nullptr, *fsHideKey_ = nullptr;  // Inhalt des Ausblende-Knopfs
     QSlider* fsSlider_ = nullptr;
     QLabel* fsTime_ = nullptr;
-    bool fsBarVisible_ = true;  // Einstellung: Leiste beim Abspielen zeigen (pausiert ist sie immer da)
+    bool fsBarVisible_ = true;  // Leiste beim Abspielen zeigen (pausiert ist sie immer da); jedes neue Video: wieder an
+    int hintGen_ = 0;           // zählt Hinweise im Bild, damit ein alter Ausblende-Timer keinen neuen Hinweis versteckt
     bool fsIdle_ = false;       // beim Abspielen eine Weile keine Maus bewegt -> Steuerung ausgeblendet
     Osd* osd_ = nullptr;  // Symbol in der Bildmitte bei Pause/Abspielen/Spulen (wie bei YouTube)
     QPushButton *tabMedia_, *tabProps_;

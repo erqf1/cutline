@@ -681,7 +681,19 @@ void MainWindow::buildUi() {
         b->setCursor(Qt::PointingHandCursor);
         b->setStyleSheet(vidBtn);
     }
-    fsHide_->setIcon(makeIcon(Ic::ChevronDown, Qt::white));
+    // Ausblende-Knopf: Pfeil, Text und die Taste als Tastenkappe, damit man sieht, dass es ein Hotkey ist
+    auto* hl = new QHBoxLayout(fsHide_);
+    hl->setContentsMargins(6, 0, 6, 0);
+    hl->setSpacing(6);
+    fsHideIcon_ = new QLabel;
+    fsHideText_ = new QLabel;
+    fsHideKey_ = new QLabel;
+    fsHideKey_->setStyleSheet("QLabel { color: #ffffff; background: rgba(255,255,255,0.18); border: 1px solid rgba(255,255,255,0.6);"
+                              " border-bottom-width: 2px; border-radius: 4px; padding: 0 6px; font-size: 12px; font-weight: 700; }");
+    for (QLabel* l : {fsHideIcon_, fsHideText_, fsHideKey_}) {
+        l->setAttribute(Qt::WA_TransparentForMouseEvents);
+        hl->addWidget(l);
+    }
     auto* fsSeek = new SeekSlider;
     fsSlider_ = fsSeek;
     fsSlider_->setRange(0, 10000);
@@ -742,7 +754,6 @@ void MainWindow::buildUi() {
         wakeFsControls(false);
     });
     osd_ = new Osd(view_);
-    fsBarVisible_ = QSettings().value("fsBar", true).toBool();
     applyShortcuts();
 }
 
@@ -797,10 +808,12 @@ void MainWindow::updatePlayIcon() {
 
 void MainWindow::toggleFsBar() {
     fsBarVisible_ = !fsBarVisible_;
-    QSettings().setValue("fsBar", fsBarVisible_);
     fsIdle_ = false;
     if (fullscreen_) cursorTimer_->start();
     placeVideoControls();
+    const QString key = shortcutText("bar");
+    if (fullscreen_ && !key.isEmpty())
+        showVideoHint(T(fsBarVisible_ ? "fsbar_shown_toast" : "fsbar_hidden_toast").arg(key), 2200);
 }
 
 bool MainWindow::playingIntent() const {
@@ -836,11 +849,14 @@ void MainWindow::updateFsBar() {
     if (show) fsBar_->raise();
     fsBtn_->setVisible(!fullscreen_ || show);
     // Ausgeblendet ist die Leiste nur beim Pausieren zu sehen - der Knopf holt sie dann fürs Abspielen zurück
-    const char* what = fsBarVisible_ ? "fsbar_hide" : "fsbar_show";
     const QString key = shortcutText("bar");
-    fsHide_->setIcon(makeIcon(fsBarVisible_ ? Ic::ChevronDown : Ic::ChevronUp, Qt::white));
-    fsHide_->setText(" " + T(what) + (key.isEmpty() ? QString() : "  " + key));
-    fsHide_->setToolTip(T(what) + (key.isEmpty() ? QString() : " (" + key + ")"));
+    fsHideIcon_->setPixmap(makeIcon(fsBarVisible_ ? Ic::ChevronDown : Ic::ChevronUp, Qt::white)
+                               .pixmap(QSize(16, 16), devicePixelRatioF()));
+    fsHideText_->setText(T(fsBarVisible_ ? "fsbar_hide" : "fsbar_show"));
+    fsHideKey_->setText(key);
+    fsHideKey_->setVisible(!key.isEmpty());
+    fsHide_->setToolTip(key.isEmpty() ? QString() : T("fsbar_key_tip").arg(key));
+    fsHide_->setMinimumWidth(fsHide_->layout()->sizeHint().width());
     fsPlay_->setToolTip(T("sc_play") + " (" + shortcutText("play") + ")");
     updatePlayIcon();
     updateUi();
@@ -910,20 +926,29 @@ void MainWindow::placeVideoControls() {
 
 // Beim Wechsel ins Vollbild kurz zeigen, wie man wieder herauskommt
 void MainWindow::showFullscreenHint() {
-    fsHint_->setText(T("fs_exit_hint"));
+    const QString key = shortcutText("bar");
+    showVideoHint(T("fs_exit_hint") + (key.isEmpty() ? QString() : "\n" + T("fs_bar_key_hint").arg(key)), 3200);
+}
+
+void MainWindow::showVideoHint(const QString& text, int ms) {
+    const int gen = ++hintGen_;
+    fsHint_->setText(text);
     fsHint_->adjustSize();
     fsHint_->move((view_->width() - fsHint_->width()) / 2, 40);
     fsHint_->show();
     fsHint_->raise();
     auto* eff = new QGraphicsOpacityEffect(fsHint_);
     eff->setOpacity(1.0);
-    fsHint_->setGraphicsEffect(eff);
-    auto* anim = new QPropertyAnimation(eff, "opacity", fsHint_);
-    anim->setDuration(700);
-    anim->setStartValue(1.0);
-    anim->setEndValue(0.0);
-    QTimer::singleShot(2800, anim, [this, anim] {
-        connect(anim, &QPropertyAnimation::finished, fsHint_, &QWidget::hide);
+    fsHint_->setGraphicsEffect(eff);  // löscht den Effekt (samt Animation) eines vorherigen Hinweises
+    QTimer::singleShot(ms, this, [this, gen, eff] {
+        if (gen != hintGen_) return;  // inzwischen kam ein neuer Hinweis
+        auto* anim = new QPropertyAnimation(eff, "opacity", eff);
+        anim->setDuration(700);
+        anim->setStartValue(1.0);
+        anim->setEndValue(0.0);
+        connect(anim, &QPropertyAnimation::finished, this, [this, gen] {
+            if (gen == hintGen_) fsHint_->hide();
+        });
         anim->start(QAbstractAnimation::DeleteWhenStopped);
     });
 }
@@ -1080,8 +1105,13 @@ void MainWindow::openFile(const QString& path) {
     canvasSet_ = false;
     loadedSrc_ = 0;
     pending_ = false;
+    fsBarVisible_ = true;  // ausgeblendete Vollbild-Leiste gilt nur für das eine Video
+    fsIdle_ = false;
+    fsHint_->hide();       // "Leiste ausgeblendet" passt nicht mehr
+    placeVideoControls();
     lblHint_->hide();
     setWindowTitle(QFileInfo(path).fileName());
+    player_->setSource(QUrl());  // dieselbe Datei nochmal öffnen: sonst lädt der Player sie nicht neu
     player_->setSource(QUrl::fromLocalFile(path));
     player_->pause();  // erstes Bild sofort anzeigen
     addToBin(path);
@@ -2199,6 +2229,7 @@ void MainWindow::exportVideo() {
 
 // Entwickler-Test: Fenster per grab() in Dateien rendern (greift nicht auf den Bildschirm zu)
 void MainWindow::selfShots(const QString& dir) {
+    audio_->setMuted(true);  // Tests laufen lautlos
     auto shot = [this, dir](const QString& name) { grab().save(dir + "/" + name + ".png"); };
     QTimer::singleShot(3500, this, [=] {
         shot("a_default");
@@ -2300,19 +2331,19 @@ void MainWindow::selfShots(const QString& dir) {
 }
 
 void MainWindow::fsShots(const QString& dir) {
-    const QVariant oldPref = QSettings().value("fsBar");
-    fsBarVisible_ = true;
+    audio_->setMuted(true);  // Tests laufen lautlos
     auto step = [this, dir](const QString& name) {
         grab().save(dir + "/fs_" + name + ".png");
         QFile f(dir + "/fs.txt");
         f.open(QIODevice::Append | QIODevice::Text);
-        f.write(QString("%1: bar=%2 fsBtn=%3 cursorBlank=%4 playing=%5 button=\"%6\"\n")
+        f.write(QString("%1: bar=%2 fsBtn=%3 cursorBlank=%4 playing=%5 button=\"%6\" key=\"%7\" hint=\"%8\"\n")
                     .arg(name)
                     .arg(fsBar_->isVisible())
                     .arg(fsBtn_->isVisible())
                     .arg(view_->viewport()->cursor().shape() == Qt::BlankCursor)
                     .arg(playingIntent())
-                    .arg(fsHide_->text().trimmed())
+                    .arg(fsHideText_->text(), fsHideKey_->text(),
+                         fsHint_->isVisible() ? fsHint_->text().replace('\n', " / ") : QString())
                     .toUtf8());
     };
     auto at = [this](int ms, std::function<void()> fn) { QTimer::singleShot(ms, this, fn); };
@@ -2329,14 +2360,27 @@ void MainWindow::fsShots(const QString& dir) {
     at(10700, [=] { step("10_pause_hidden"); toggleFsBar(); togglePlay(); });
     at(10900, [=] { step("11_play_shown"); scActions_["fwd"]->trigger(); });
     at(11000, [=] { step("12_play_seek"); exitFullscreen(); });
-    at(11500, [=] {
-        step("13_windowed");
-        oldPref.isValid() ? QSettings().setValue("fsBar", oldPref) : QSettings().remove("fsBar");
-        QApplication::quit();
+    at(11500, [=] { step("13_windowed"); enterFullscreen(); });
+    // Neues Video öffnen: ausgeblendete Leiste ist wieder da
+    at(12500, [=] { toggleFsBar(); });
+    at(12700, [=] {
+        step("14_hidden_before_open");
+        const QString file = pr_.sources[0].path;  // Kopie: openFile setzt das Projekt zurück
+        openFile(file);
     });
+    at(14000, [=] { togglePlay(); });
+    at(14300, [=] {
+        step("15_new_video_playing");
+        QFile f(dir + "/fs.txt");
+        f.open(QIODevice::Append | QIODevice::Text);
+        f.write(QString("   pieces=%1 state=%2 status=%3 dur=%4 loading=%5\n").arg(pr_.pieces.size()).arg(int(player_->playbackState()))
+                    .arg(int(player_->mediaStatus())).arg(player_->duration()).arg(loading_).toUtf8());
+    });
+    at(14500, [=] { QApplication::quit(); });
 }
 
 void MainWindow::aspectShots(const QString& dir) {
+    audio_->setMuted(true);  // Tests laufen lautlos
     auto shot = [this, dir](const QString& name) { grab().save(dir + "/" + name + ".png"); };
     auto log = [dir](const QString& line) {
         QFile f(dir + "/aspect.txt");
