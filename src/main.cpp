@@ -38,6 +38,17 @@ int main(int argc, char* argv[]) {
     // Eigene App-ID: eigener Taskleisten-Button, nicht mit anderen Programmen gruppiert
     SetCurrentProcessExplicitAppUserModelID(L"WSoftware.Cutline");
 #endif
+#ifdef Q_OS_LINUX
+    // Linux, vor allem integrierte Grafik unter Wayland (z. B. Hyprland): Hardware-Dekodierung (VAAPI) und die
+    // GPU-Umrechnung der Videobilder lassen Qt Multimedia dort oft abstürzen. Software-Dekodierung reicht für
+    // 1080p locker. Wer sie trotzdem will: CUTLINE_HW_DECODE=1. Eigene Werte der Variablen bleiben unangetastet.
+    if (qEnvironmentVariable("CUTLINE_HW_DECODE") != "1") {
+        if (!qEnvironmentVariableIsSet("QT_FFMPEG_DECODING_HW_DEVICE_TYPES"))
+            qputenv("QT_FFMPEG_DECODING_HW_DEVICE_TYPES", ",");  // gesetzt, aber leer -> keine Hardware-Geräte
+        if (!qEnvironmentVariableIsSet("QT_DISABLE_HW_TEXTURES_CONVERSION"))
+            qputenv("QT_DISABLE_HW_TEXTURES_CONVERSION", "1");
+    }
+#endif
     App app(argc, argv);
     registerSpecialFonts();
     QCoreApplication::setOrganizationName("WSoftware");
