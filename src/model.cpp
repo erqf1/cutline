@@ -97,7 +97,7 @@ static QString atempoChain(double sp) {
     return parts.join(",");
 }
 
-static QStringList encArgs(const QString& enc, int q) {
+QStringList encArgs(const QString& enc, int q) {
     static const int qv[3] = {19, 24, 29};
     const QString v = QString::number(qv[std::clamp(q, 0, 2)]);
     if (enc == "h264_nvenc") return {"-c:v", enc, "-preset", "p5", "-rc", "vbr", "-cq", v, "-b:v", "0"};

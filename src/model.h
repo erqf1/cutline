@@ -143,3 +143,4 @@ struct ExportOptions {
 bool isAudioFormat(const QString& format);
 
 QStringList buildExport(const Project& pr, const ExportOptions& o, const QString& out);
+QStringList encArgs(const QString& encoder, int quality);  // Video-Encoder-Argumente je Qualitätsstufe

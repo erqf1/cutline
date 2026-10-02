@@ -1,6 +1,7 @@
 #include "timeline.h"
 
 #include <QFileInfo>
+#include <QMimeData>
 #include <QLinearGradient>
 #include <QMouseEvent>
 #include <QPainter>
@@ -18,6 +19,7 @@ static double toDb(double v) { return v <= 0.001 ? -60.0 : std::clamp(20.0 * std
 static double fromDb(double db) { return db <= -59.9 ? 0.0 : std::pow(10.0, db / 20.0); }
 
 Timeline::Timeline(EditorHost* host) : host_(host) {
+    setAcceptDrops(true);  // Medien hineinziehen
     setMouseTracking(true);
     setMinimumHeight(RULER + ROW + LANE * 2 + 16);
 }
@@ -256,6 +258,12 @@ void Timeline::paintEvent(QPaintEvent* ev) {
         drawDbPill(p, hoverX_, volLineY(waveRect(hoverIndex_), pr.pieces[hoverIndex_].volume), pr.pieces[hoverIndex_].volume);
     }
 
+    // Hier landet die hineingezogene Datei
+    if (dropX_ >= 0) {
+        p.setPen(QPen(th.accent, 3, Qt::DashLine));
+        p.drawLine(QPointF(dropX_, RULER), QPointF(dropX_, height()));
+    }
+
     // Playhead
     int x = int(xOf(host_->curTime()));
     p.setPen(QPen(playheadColor(), 2));
@@ -473,4 +481,31 @@ void Timeline::wheelEvent(QWheelEvent* e) {
     } else {
         e->ignore();
     }
+}
+
+// ---------------------------------------------------------------- Drag & Drop
+void Timeline::dragEnterEvent(QDragEnterEvent* e) {
+    if (e->mimeData()->hasUrls()) e->acceptProposedAction();
+}
+
+void Timeline::dragMoveEvent(QDragMoveEvent* e) {
+    if (!e->mimeData()->hasUrls()) return;
+    e->acceptProposedAction();
+    const double total = host_->pr().total();
+    dropX_ = xOf(std::clamp(tOf(e->position().x()), 0.0, total));
+    update();
+}
+
+void Timeline::dragLeaveEvent(QDragLeaveEvent*) {
+    dropX_ = -1;
+    update();
+}
+
+void Timeline::dropEvent(QDropEvent* e) {
+    dropX_ = -1;
+    update();
+    const double t = std::clamp(tOf(e->position().x()), 0.0, host_->pr().total());
+    for (const QUrl& u : e->mimeData()->urls())
+        if (u.isLocalFile()) host_->insertMediaAt(u.toLocalFile(), t);
+    e->acceptProposedAction();
 }

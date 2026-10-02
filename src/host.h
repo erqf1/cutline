@@ -40,4 +40,5 @@ public:
     virtual QImage frameImage() = 0;   // aktuelles Videobild (für echte Unschärfe in der Vorschau)
     virtual QRectF videoRect() const = 0;  // Bereich des Videos in Szenenkoordinaten
     virtual bool showGuides() const = 0;   // Rahmen/Griffe anzeigen (nicht im Vollbild)
+    virtual void insertMediaAt(const QString& path, double t) = 0;  // Datei an Stelle t einfügen (Drag & Drop)
 };

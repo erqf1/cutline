@@ -16,6 +16,11 @@ protected:
     void mouseReleaseEvent(QMouseEvent*) override;
     void leaveEvent(QEvent*) override;
     void wheelEvent(QWheelEvent*) override;
+    // Medien aus dem Medien-Panel (oder dem Explorer) an eine Stelle ziehen
+    void dragEnterEvent(QDragEnterEvent*) override;
+    void dragMoveEvent(QDragMoveEvent*) override;
+    void dragLeaveEvent(QDragLeaveEvent*) override;
+    void dropEvent(QDropEvent*) override;
 
 private:
     static constexpr int RULER = 26, ROW = 86, WAVE = 26, LANE = 32, LEFT = 14;
@@ -47,6 +52,7 @@ private:
     enum class Hover { None, Piece, Audio } hover_ = Hover::None;
     int hoverIndex_ = -1;
     double hoverX_ = 0;
+    double dropX_ = -1;  // Markierung beim Hineinziehen
 
     EditorHost* host_;
     double zoom_ = 1.0;

@@ -57,6 +57,8 @@ protected:
     }
 };
 
+class Osd;
+
 class MainWindow : public QMainWindow, public EditorHost {
     Q_OBJECT
 public:
@@ -86,6 +88,7 @@ public:
     QImage frameImage() override;
     QRectF videoRect() const override { return QRectF(vitem_->pos(), vitem_->size()); }
     bool showGuides() const override { return !fullscreen_ && btnEdit_->isChecked(); }
+    void insertMediaAt(const QString& path, double t) override;
 
 protected:
     void resizeEvent(QResizeEvent*) override;
@@ -112,7 +115,10 @@ private:
                     const char* tipSuffix = "");
     void buildUi();
     QWidget* buildInspector();
-    void addShortcut(const QKeySequence& k, std::function<void()> fn);
+    void addShortcut(const QString& id, std::function<void()> fn);
+    void applyShortcuts();      // Tastenkürzel aus den Einstellungen übernehmen (auch Tooltips)
+    void toggleFsBar();         // Leiste im Vollbild ein-/ausblenden
+    void updateFsBar();
     void applyTheme();
     void retranslate();
     void updatePlayIcon();
@@ -219,6 +225,14 @@ private:
     // UI
     std::vector<BtnSpec> btns_;
     QPushButton *btnPlay_, *btnEdit_, *fsBtn_ = nullptr;
+    std::map<QString, QAction*> scActions_;  // Tastenkürzel nach Kennung (shortcuts.h)
+    // Vollbild: kleine Leiste über dem Bild (Pause, Fortschritt, Zeit, Ausblenden)
+    QFrame* fsBar_ = nullptr;
+    QPushButton *fsPlay_ = nullptr, *fsHide_ = nullptr, *fsShow_ = nullptr;
+    QSlider* fsSlider_ = nullptr;
+    QLabel* fsTime_ = nullptr;
+    bool fsBarVisible_ = true;
+    Osd* osd_ = nullptr;  // Symbol in der Bildmitte bei Pause/Abspielen/Spulen (wie bei YouTube)
     QPushButton *tabMedia_, *tabProps_;
     QListWidget* bin_;
     QLabel* lblBinHint_;

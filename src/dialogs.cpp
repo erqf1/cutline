@@ -1,4 +1,7 @@
 #include "dialogs.h"
+#include <QProcess>
+#include <cmath>
+#include <QLocale>
 
 #include <QDir>
 #include <QFileDialog>
@@ -8,7 +11,11 @@
 #include <QHBoxLayout>
 #include <QPushButton>
 #include <QVBoxLayout>
+#include <QGridLayout>
+#include <QKeyEvent>
+#include <QScrollArea>
 #include "i18n.h"
+#include "shortcuts.h"
 #include "theme.h"
 
 // ---------------------------------------------------------------- Sprache (Erststart)
@@ -63,6 +70,12 @@ SettingsDialog::SettingsDialog(QWidget* parent) : QDialog(parent) {
     ur->addStretch();
     ur->addWidget(update_);
     v->addLayout(ur);
+    keys_ = new QPushButton;
+    connect(keys_, &QPushButton::clicked, this, [this] {
+        ShortcutDialog dlg(this);
+        dlg.exec();
+    });
+    v->addWidget(keys_);
     v->addStretch();
     ok_ = new QPushButton;
     ok_->setObjectName("primary");
@@ -84,11 +97,131 @@ void SettingsDialog::retranslate() {
     lblTheme_->setText(T("theme"));
     ok_->setText(T("ok"));
     update_->setText(T("upd_check"));
+    keys_->setText(T("shortcuts") + "…");
+}
+
+// ---------------------------------------------------------------- Tastenkürzel
+KeyButton::KeyButton(const QKeySequence& seq, QWidget* parent) : QPushButton(parent), seq_(seq) {
+    setMinimumWidth(150);
+    setCursor(Qt::PointingHandCursor);
+    connect(this, &QPushButton::clicked, this, [this] { setRecording(!recording_); });
+    setRecording(false);
+}
+
+void KeyButton::setSequence(const QKeySequence& seq) {
+    seq_ = seq;
+    setRecording(false);
+}
+
+void KeyButton::setRecording(bool on) {
+    recording_ = on;
+    if (on) {
+        setText(T("sc_press"));
+        setFocus();
+        grabKeyboard();
+    } else {
+        releaseKeyboard();
+        setText(seq_.isEmpty() ? QStringLiteral("—") : seq_.toString(QKeySequence::NativeText));
+    }
+}
+
+void KeyButton::keyPressEvent(QKeyEvent* e) {
+    if (!recording_) return QPushButton::keyPressEvent(e);
+    const int key = e->key();
+    if (key == Qt::Key_Control || key == Qt::Key_Shift || key == Qt::Key_Alt || key == Qt::Key_Meta ||
+        key == Qt::Key_AltGr || key == Qt::Key_unknown)
+        return;  // warten, bis eine "echte" Taste kommt
+    const Qt::KeyboardModifiers mods = e->modifiers() & (Qt::ControlModifier | Qt::AltModifier | Qt::ShiftModifier | Qt::MetaModifier);
+    if (!mods && key == Qt::Key_Escape) return setRecording(false);  // abbrechen
+    if (!mods && key == Qt::Key_Backspace) {
+        seq_ = QKeySequence();
+    } else {
+        seq_ = QKeySequence(QKeyCombination(mods, Qt::Key(key)));
+    }
+    setRecording(false);
+    emit sequenceChanged(seq_);
+}
+
+void KeyButton::focusOutEvent(QFocusEvent* e) {
+    if (recording_) setRecording(false);
+    QPushButton::focusOutEvent(e);
+}
+
+ShortcutDialog::ShortcutDialog(QWidget* parent) : QDialog(parent) {
+    setWindowTitle(T("shortcuts"));
+    setMinimumSize(480, 560);
+    auto* v = new QVBoxLayout(this);
+    v->setContentsMargins(20, 20, 20, 20);
+    v->setSpacing(10);
+    auto* hint = new QLabel(T("shortcuts_hint"));
+    hint->setObjectName("hint");
+    hint->setWordWrap(true);
+    v->addWidget(hint);
+
+    auto* list = new QWidget;
+    auto* grid = new QGridLayout(list);
+    grid->setContentsMargins(0, 0, 8, 0);
+    grid->setHorizontalSpacing(16);
+    grid->setVerticalSpacing(6);
+    QList<KeyButton*> buttons;
+    int row = 0;
+    for (const ShortcutDef& d : shortcutDefs()) {
+        auto* label = new QLabel(T(d.label));
+        grid->addWidget(label, row, 0);
+        auto* b = new KeyButton(shortcutFor(d.id));
+        grid->addWidget(b, row, 1);
+        buttons << b;
+        ++row;
+    }
+    grid->setColumnStretch(0, 1);
+    auto* scroll = new QScrollArea;
+    scroll->setWidget(list);
+    scroll->setWidgetResizable(true);
+    scroll->setFrameShape(QFrame::NoFrame);
+    v->addWidget(scroll, 1);
+
+    // Belegt eine Aktion eine Taste, die schon vergeben war, verliert die andere sie (mit Hinweis)
+    auto* note = new QLabel;
+    note->setObjectName("hint");
+    note->setWordWrap(true);
+    v->addWidget(note);
+    const QList<ShortcutDef>& defs = shortcutDefs();
+    for (int i = 0; i < buttons.size(); ++i) {
+        connect(buttons[i], &KeyButton::sequenceChanged, this, [buttons, defs, i, note](const QKeySequence& seq) {
+            note->clear();
+            if (seq.isEmpty()) return;
+            for (int k = 0; k < buttons.size(); ++k)
+                if (k != i && buttons[k]->sequence() == seq) {
+                    buttons[k]->setSequence(QKeySequence());
+                    note->setText(T("sc_moved").arg(T(defs[k].label)));
+                }
+        });
+    }
+
+    auto* row2 = new QHBoxLayout;
+    auto* reset = new QPushButton(T("sc_reset"));
+    connect(reset, &QPushButton::clicked, this, [buttons, defs, note] {
+        for (int i = 0; i < buttons.size(); ++i) buttons[i]->setSequence(defaultShortcut(defs[i].id));
+        note->clear();
+    });
+    row2->addWidget(reset);
+    row2->addStretch();
+    auto* cancel = new QPushButton(T("cancel"));
+    connect(cancel, &QPushButton::clicked, this, &QDialog::reject);
+    row2->addWidget(cancel);
+    auto* ok = new QPushButton(T("ok"));
+    ok->setObjectName("primary");
+    connect(ok, &QPushButton::clicked, this, [this, buttons, defs] {
+        for (int i = 0; i < buttons.size(); ++i) setShortcut(defs[i].id, buttons[i]->sequence());
+        accept();
+    });
+    row2->addWidget(ok);
+    v->addLayout(row2);
 }
 
 // ---------------------------------------------------------------- Export
 ExportDialog::ExportDialog(QWidget* parent, int srcW, int srcH, double srcFps, const QString& sourcePath)
-    : QDialog(parent), srcW_(srcW), srcH_(srcH), source_(sourcePath) {
+    : QDialog(parent), srcW_(srcW), srcH_(srcH), srcFps_(srcFps > 1 ? srcFps : 30.0), source_(sourcePath) {
     setWindowTitle(T("export"));
     setMinimumWidth(420);
     auto* v = new QVBoxLayout(this);
@@ -131,6 +264,11 @@ ExportDialog::ExportDialog(QWidget* parent, int srcW, int srcH, double srcFps, c
     quality_->setCurrentIndex(1);
     form->addRow(T("quality"), quality_);
     v->addLayout(form);
+    est_ = new QLabel;
+    est_->setObjectName("title");
+    v->addWidget(est_);
+    for (QComboBox* c : {format_, res_, fps_, quality_})
+        connect(c, &QComboBox::currentIndexChanged, this, &ExportDialog::updateEstimate);
 
     auto* hint = new QLabel(T("export_hint"));
     hint->setObjectName("hint");
@@ -206,6 +344,80 @@ ExportDialog::ExportDialog(QWidget* parent, int srcW, int srcH, double srcFps, c
     row->addWidget(cancel);
     row->addWidget(ok);
     v->addLayout(row);
+}
+
+void ExportDialog::setEstimateInputs(double outDuration, double srcDuration, int natW, int natH, bool hasAudio) {
+    outDur_ = outDuration;
+    srcDur_ = srcDuration;
+    hasAudio_ = hasAudio;
+    // Bitrate des Originals (ohne Ton) als Maß dafür, wie viel Bewegung/Detail im Video steckt
+    const qint64 bytes = QFileInfo(source_).size();
+    if (srcDuration > 0.5 && bytes > 0) srcVideoBps_ = std::max(0.0, bytes * 8.0 / srcDuration - (hasAudio ? 160000.0 : 0.0));
+    srcPxRate_ = double(std::max(1, natW)) * std::max(1, natH) * srcFps_;
+    updateEstimate();
+}
+
+void ExportDialog::showSize(double bits) {
+    const double mb = bits / 8 / 1048576;
+    const QString size = mb >= 1024 ? QString("%1 GB").arg(QLocale().toString(mb / 1024, 'f', 1))
+                                    : QString("%1 MB").arg(mb < 10 ? QLocale().toString(mb, 'f', 1) : QString::number(qRound(mb)));
+    est_->setText(T("est_size").arg(size));
+}
+
+// Ungefähre Dateigröße. Exportiert wird mit konstanter Qualität (CRF/CQP), die Größe hängt also vom Inhalt ab.
+// Video: erst eine schnelle Schätzung aus der Bitrate des Originals, dann im Hintergrund 3 s aus der Mitte mit genau
+// diesen Einstellungen kodieren und hochrechnen. Nur-Ton-Formate sind direkt fast exakt, GIF nur grob.
+void ExportDialog::updateEstimate() {
+    if (!est_ || outDur_ <= 0) return;
+    if (probe_) {
+        probe_->disconnect(this);
+        probe_->kill();
+        probe_->deleteLater();
+        probe_ = nullptr;
+    }
+    const ExportOptions o = options();
+    const int q = std::clamp(o.quality, 0, 2);
+    double bits = 0;
+    if (o.format == "wav") {
+        bits = outDur_ * 48000 * 2 * 16;
+    } else if (isAudioFormat(o.format)) {
+        static const double kbps[3] = {320, 192, 128};
+        bits = outDur_ * kbps[q] * 1000;
+    } else if (o.format == "gif") {
+        const double gw = std::min(o.width, 640), gh = double(o.height) * gw / std::max(1, o.width);
+        bits = outDur_ * gw * gh * std::min(o.fps, 15.0) * 0.5;  // sehr grob: GIF schwankt stark mit dem Inhalt
+    } else {
+        static const double factor[3] = {1.0, 0.6, 0.38}, bppMin[3] = {0.03, 0.018, 0.011}, bppMax[3] = {0.25, 0.12, 0.07};
+        const double pxRate = double(o.width) * o.height * o.fps;
+        double vbps = srcVideoBps_ > 0 && srcPxRate_ > 0 ? srcVideoBps_ * std::pow(pxRate / srcPxRate_, 0.75) * factor[q]
+                                                          : pxRate * 0.07 * factor[q];
+        vbps = std::clamp(vbps, pxRate * bppMin[q], pxRate * bppMax[q]);
+        bits = outDur_ * (vbps + (hasAudio_ ? 192000.0 : 0.0)) * 1.01;
+
+        // Probe-Export: 3 s aus der Mitte des Originals, gleiche Größe/Bildrate/Qualität/Encoder
+        if (!source_.isEmpty() && srcDur_ > 0.5) {
+            const double len = std::min(3.0, srcDur_), from = std::max(0.0, srcDur_ / 2 - len / 2);
+            const QString tmp = QDir::temp().filePath("cutline-size-probe.mp4");
+            QStringList a = {"-hide_banner", "-v", "error", "-y", "-ss", QString::number(from, 'f', 2), "-t",
+                             QString::number(len, 'f', 2), "-i", source_, "-an", "-vf",
+                             QString("scale=%1:%2:force_original_aspect_ratio=decrease,pad=%1:%2:(ow-iw)/2:(oh-ih)/2,format=yuv420p")
+                                 .arg(o.width).arg(o.height),
+                             "-r", QString::number(o.fps, 'f', 3)};
+            a << encArgs(o.encoder, q) << tmp;
+            probe_ = new QProcess(this);
+            const double audioBps = hasAudio_ ? 192000.0 : 0.0, dur = outDur_;
+            connect(probe_, &QProcess::finished, this, [this, tmp, len, audioBps, dur](int code, QProcess::ExitStatus st) {
+                const qint64 bytes = QFileInfo(tmp).size();
+                QFile::remove(tmp);
+                if (probe_) probe_->deleteLater();
+                probe_ = nullptr;
+                if (st != QProcess::NormalExit || code != 0 || bytes <= 0) return;  // Schätzung von oben bleibt stehen
+                showSize(dur * (bytes * 8.0 / len + audioBps) * 1.01);
+            });
+            probe_->start(ffmpegPath(), a);
+        }
+    }
+    showSize(bits);
 }
 
 ExportOptions ExportDialog::options() const {

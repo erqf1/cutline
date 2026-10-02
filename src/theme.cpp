@@ -1,4 +1,8 @@
 #include "theme.h"
+#include <QPixmap>
+#include <QPainter>
+#include <QFile>
+#include <QDir>
 
 static QList<Theme> makeThemes() {
     auto mk = [](const char* id, const char* name, const char* bg, const char* panel, const char* panel2,
@@ -49,6 +53,22 @@ const Theme& currentTheme() {
 
 void setCurrentTheme(const QString& id) { g_id = id; }
 
+// Grüner XP-Haken für Checkboxen (einmal gezeichnet, als Datei für das Stylesheet)
+static QString xpCheckImage() {
+    const QString path = QDir::temp().filePath("cutline-xp-check.png");
+    if (!QFile::exists(path)) {
+        QPixmap pm(26, 26);
+        pm.fill(Qt::transparent);
+        QPainter p(&pm);
+        p.setRenderHint(QPainter::Antialiasing);
+        p.setPen(QPen(QColor("#21A121"), 4.2, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+        p.drawPolyline(QPolygonF({QPointF(6, 13.5), QPointF(11, 18.5), QPointF(20, 7.5)}));
+        p.end();
+        pm.save(path);
+    }
+    return QDir::fromNativeSeparators(path);
+}
+
 QString buildStyleSheet(const Theme& t) {
     QString s = R"(
 * { font-family: @font@; font-size: @fs@px; color: @text@; }
@@ -69,6 +89,7 @@ QPushButton#play { border-radius: 20px; min-width: 40px; max-width: 40px; min-he
                    padding: 0; background: @accent@; border-color: @accent@; }
 QPushButton#play:hover { background: @accent2@; }
 QPushButton#tool { padding: 6px 10px; }
+QPushButton#paneHeader { background: transparent; border: none; padding: 2px 0; text-align: left; font-weight: 600; font-size: 14px; }
 QDoubleSpinBox, QSpinBox, QComboBox, QLineEdit { background: @panel2@; border: 1px solid @border@;
     border-radius: @r6@px; padding: 5px 8px; selection-background-color: @accent@; selection-color: @acctext@; }
 QComboBox::drop-down { border: none; width: 22px; }
@@ -119,7 +140,7 @@ QPushButton { color: #000000; border: 1px solid #003C74; border-radius: 3px; pad
 QPushButton:hover { border: 1px solid #E5A01A; background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #FFF8E6, stop:0.1 #FFFFFF,
     stop:0.86 #ECEBE5, stop:0.94 #FAD68A, stop:1 #F8B636); }
 QPushButton:pressed { background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #CDCAC3, stop:0.2 #E3E3DB, stop:1 #F2F1EC); }
-QPushButton:checked { background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #E3E2DA, stop:1 #F9F8F3); border: 1px solid #003C74; }
+QPushButton:checked { color: #000000; background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #E3E2DA, stop:1 #F9F8F3); border: 1px solid #003C74; }
 QPushButton:disabled { color: #ACA899; border-color: #C9C7BA; }
 QPushButton#play { border-radius: 20px; border: 1px solid #1B5E12; color: #FFFFFF;
     background: qradialgradient(cx:0.5, cy:0.28, radius:0.75, fx:0.5, fy:0.22, stop:0 #B9F59F, stop:0.35 #5CC43E,
@@ -135,6 +156,33 @@ QFrame#card QLabel { color: #FFFFFF; }
 QFrame#card QLabel#title { color: #FFFFFF; font-weight: bold; font-size: 13px; }
 QFrame#card QLabel#hint { color: #E3EBFF; }
 QFrame#card QPushButton { color: #000000; }
+/* Kopf eines XP-Aufgabenbereichs (wie links im Explorer) */
+QFrame#card QPushButton#paneHeader { color: #215DC6; font-weight: bold; font-size: 12px; padding: 6px 10px; border: none;
+    border-top-left-radius: 5px; border-top-right-radius: 5px; border-bottom-left-radius: 0; border-bottom-right-radius: 0;
+    background: qlineargradient(x1:0,y1:0,x2:1,y2:0, stop:0 #FFFFFF, stop:1 #C6D3F7); }
+QPlainTextEdit, QTextEdit { background: #FFFFFF; color: #000000; border: 1px solid #7F9DB9; border-radius: 0;
+    selection-background-color: #316AC5; selection-color: #FFFFFF; }
+QCheckBox { color: #000000; }
+QFrame#card QCheckBox { color: #FFFFFF; }
+QCheckBox::indicator { width: 13px; height: 13px; border: 1px solid #1C5180; background: qlineargradient(x1:0,y1:0,x2:1,y2:1, stop:0 #DCDCD7, stop:1 #FFFFFF); }
+QCheckBox::indicator:checked { image: url(@xpcheck@); }
+
+/* Abspielleiste als XP-Taskleiste mit grünem "Start"-Knopf */
+QWidget#transport { border-top: 1px solid #3168D5;
+    background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #3168D5, stop:0.06 #4993E6, stop:0.12 #2157D7,
+                stop:0.5 #245EDB, stop:0.9 #1941A5, stop:1 #0F2E91); }
+QWidget#transport QLabel { color: #FFFFFF; }
+QWidget#transport QPushButton { color: #FFFFFF; font-weight: bold; border: 1px solid #0F2E91; border-radius: 3px; padding: 4px 11px;
+    background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #5F9AF5, stop:0.1 #3E7BE8, stop:0.6 #2B63D6, stop:1 #1D4DB8); }
+QWidget#transport QPushButton:hover { background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #7AB0FF, stop:0.6 #3D78EA, stop:1 #2658C9); }
+QWidget#transport QPushButton:checked { color: #FFFFFF;
+    background: qlineargradient(x1:0,y1:0,x2:0,y2:1, stop:0 #1A45A6, stop:1 #2B63D6); border: 1px solid #0A246A; }
+QWidget#transport QPushButton#play { border-radius: 20px; border: 1px solid #1B5E12; padding: 0;
+    background: qradialgradient(cx:0.5, cy:0.28, radius:0.75, fx:0.5, fy:0.22, stop:0 #B9F59F, stop:0.35 #5CC43E,
+                stop:0.8 #2E8B22, stop:1 #1F6B12); }
+QWidget#transport QPushButton#play:hover { background: qradialgradient(cx:0.5, cy:0.28, radius:0.75, fx:0.5, fy:0.22, stop:0 #D6FFC2,
+                stop:0.35 #72D651, stop:0.8 #379D29, stop:1 #237A15); }
+QWidget#transport QSlider::groove:horizontal { background: #1A3F9C; border: 1px solid #0A246A; border-bottom-color: #5F9AF5; }
 
 QDoubleSpinBox, QSpinBox, QComboBox, QLineEdit { background: #FFFFFF; color: #000000; border: 1px solid #7F9DB9;
     border-radius: 0; padding: 3px 5px; selection-background-color: #316AC5; selection-color: #FFFFFF; }
@@ -169,6 +217,7 @@ QGraphicsView { border: 1px solid #7F9DB9; border-radius: 0; }
 QLabel#title { font-weight: bold; }
 )";
     }
+    if (t.xp) s.replace("@xpcheck@", xpCheckImage());
     auto hex = [](const QColor& c) { return c.name(); };
     s.replace("@font@", t.font).replace("@fs@", QString::number(t.fontPx)).replace("@fs2@", QString::number(t.fontPx + 3))
         .replace("@r@", QString::number(t.radius)).replace("@r6@", QString::number(std::max(0, t.radius - 3)))

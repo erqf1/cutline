@@ -47,6 +47,18 @@ QIcon makeIcon(Ic id, const QColor& c) {
         p.drawLine(41, 24, 81, 18);
         break;
     }
+    case Ic::ChevronDown:
+    case Ic::ChevronUp: {
+        // Pfeil + Strich: "Leiste nach unten wegschieben" bzw. "wieder hochholen"
+        const bool down = id == Ic::ChevronDown;
+        QPainterPath a;
+        a.moveTo(24, down ? 34 : 58);
+        a.lineTo(50, down ? 58 : 34);
+        a.lineTo(76, down ? 34 : 58);
+        p.drawPath(a);
+        p.drawLine(24, down ? 76 : 76, 76, 76);
+        break;
+    }
     case Ic::ZoomIn:
     case Ic::ZoomOut: {
         p.drawEllipse(QPointF(42, 42), 26, 26);
