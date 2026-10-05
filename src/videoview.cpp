@@ -9,6 +9,9 @@
 
 VideoView::VideoView(QGraphicsScene* scene, QWidget* parent) : QGraphicsView(scene, parent) {
     setRenderHint(QPainter::Antialiasing);
+    // Videobild beim Verkleinern/Vergrößern glätten. Ohne das skaliert der Software-Pfad (Linux, kein GPU-Umweg)
+    // per Nearest-Neighbor: Kanten werden treppig, kleine Schrift im Video unlesbar - "schlechte Auflösung".
+    setRenderHint(QPainter::SmoothPixmapTransform);
     setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     setViewportUpdateMode(QGraphicsView::FullViewportUpdate);
