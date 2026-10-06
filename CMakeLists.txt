@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(Cutline VERSION 1.7.4 LANGUAGES CXX)
+project(Cutline VERSION 1.7.5 LANGUAGES CXX)
 if(WIN32)
     enable_language(RC)
 endif()

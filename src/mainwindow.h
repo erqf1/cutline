@@ -232,6 +232,7 @@ private:
     QPushButton *btnPlay_, *btnEdit_, *fsBtn_ = nullptr;
     std::map<QString, QAction*> scActions_;  // Tastenkürzel nach Kennung (shortcuts.h)
     // Vollbild: kleine Leiste über dem Bild (Pause, Fortschritt, Zeit, Ausblenden)
+    QWidget* seekGap_ = nullptr;  // Platzhalter für die Fortschrittsleiste im Bearbeiten-Modus
     QFrame* fsBar_ = nullptr;
     QPushButton *fsPlay_ = nullptr, *fsHide_ = nullptr;
     QLabel *fsHideIcon_ = nullptr, *fsHideText_ = nullptr, *fsHideKey_ = nullptr;  // Inhalt des Ausblende-Knopfs

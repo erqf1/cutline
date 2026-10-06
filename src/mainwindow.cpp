@@ -583,6 +583,9 @@ void MainWindow::buildUi() {
     connect(bSet, &QPushButton::clicked, this, &MainWindow::openSettings);
     bar->addWidget(btnPlay_);
     bar->addWidget(slider_, 1);
+    seekGap_ = new QWidget;  // beim Bearbeiten statt der Leiste: dort spult man über die Zeitleiste
+    seekGap_->hide();
+    bar->addWidget(seekGap_, 1);
     bar->addWidget(lblTime_);
     bar->addWidget(btnEdit_);
     bar->addWidget(bSet);
@@ -1015,6 +1018,8 @@ void MainWindow::applyLayoutVisibility() {
     transport_->setVisible(!fullscreen_);
     tools_->setVisible(!fullscreen_ && edit);
     tlScroll_->setVisible(!fullscreen_ && edit);
+    slider_->setVisible(!edit);  // Bearbeiten: die Zeitleiste ersetzt die Fortschrittsleiste
+    seekGap_->setVisible(edit);
     inspCard_->setVisible(!fullscreen_ && edit);
     mediaCard_->setVisible(!fullscreen_ && edit);
     if (fullscreen_) {
