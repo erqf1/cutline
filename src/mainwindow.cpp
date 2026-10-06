@@ -555,9 +555,12 @@ void MainWindow::buildUi() {
     slider_ = new SeekSlider;
     slider_->setRange(0, 10000);
     slider_->setFocusPolicy(Qt::NoFocus);
+    // Ziehen: nur Vorschaubild + Zeit wandern mit, das Video springt erst beim Loslassen.
+    // Ein Klick auf die Leiste (ohne Ziehen) springt sofort.
     connect(slider_, &QSlider::sliderMoved, this, [this](int v) {
+        if (!slider_->isSliderDown()) return seek(v / 10000.0 * pr_.total());
         showScrubPreview(v);
-        scrub(v / 10000.0 * pr_.total());
+        updateUi();
     });
     connect(slider_, &QSlider::sliderReleased, this, [this] {
         scrubPrev_->hide();
@@ -705,7 +708,10 @@ void MainWindow::buildUi() {
     fb->addWidget(fsHide_);
     connect(fsPlay_, &QPushButton::clicked, this, &MainWindow::togglePlay);
     connect(fsHide_, &QPushButton::clicked, this, &MainWindow::toggleFsBar);
-    connect(fsSlider_, &QSlider::sliderMoved, this, [this](int v) { scrub(v / 10000.0 * pr_.total()); });
+    connect(fsSlider_, &QSlider::sliderMoved, this, [this](int v) {
+        if (!fsSlider_->isSliderDown()) return seek(v / 10000.0 * pr_.total());
+        updateUi();  // nur die Zeit, das Video springt erst beim Loslassen
+    });
     connect(fsSlider_, &QSlider::sliderReleased, this, [this] {
         const double t = fsSlider_->value() / 10000.0 * pr_.total();
         if (seekTimer_->isActive() || std::abs(t - lastSeekT_) > 0.01) seek(t);
@@ -1396,13 +1402,16 @@ void MainWindow::tick() {
 
 void MainWindow::updateUi() {
     double total = pr_.total();
-    lblTime_->setText(fmtTime(t_) + " / " + fmtTime(total));
+    // Beim Ziehen an der Leiste zeigt die Zeit schon die Zielstelle, das Video bleibt bis zum Loslassen
+    const QSlider* drag = slider_->isSliderDown() ? slider_ : fsSlider_ && fsSlider_->isSliderDown() ? fsSlider_ : nullptr;
+    const double shown = drag ? drag->value() / 10000.0 * total : t_;
+    lblTime_->setText(fmtTime(shown) + " / " + fmtTime(total));
     if (!slider_->isSliderDown()) {
         QSignalBlocker b(slider_);
         slider_->setValue(total > 0 ? int(t_ / total * 10000) : 0);
     }
     if (fsBar_ && fsBar_->isVisible()) {
-        fsTime_->setText(fmtTime(t_) + " / " + fmtTime(total));
+        fsTime_->setText(fmtTime(shown) + " / " + fmtTime(total));
         if (!fsSlider_->isSliderDown()) {
             QSignalBlocker b(fsSlider_);
             fsSlider_->setValue(total > 0 ? int(t_ / total * 10000) : 0);
@@ -2376,7 +2385,21 @@ void MainWindow::fsShots(const QString& dir) {
         f.write(QString("   pieces=%1 state=%2 status=%3 dur=%4 loading=%5\n").arg(pr_.pieces.size()).arg(int(player_->playbackState()))
                     .arg(int(player_->mediaStatus())).arg(player_->duration()).arg(loading_).toUtf8());
     });
-    at(14500, [=] { QApplication::quit(); });
+    // Ziehen an der Leiste: Video bleibt, erst Loslassen springt
+    auto logT = [this, dir](const QString& what) {
+        QFile f(dir + "/fs.txt");
+        f.open(QIODevice::Append | QIODevice::Text);
+        f.write(QString("%1: t=%2 label=%3\n").arg(what).arg(t_, 0, 'f', 2).arg(lblTime_->text()).toUtf8());
+    };
+    at(14500, [=] {
+        exitFullscreen();
+        logT("16_before_drag");
+        slider_->setSliderDown(true);
+        slider_->setValue(8000);
+        emit slider_->sliderMoved(8000);
+    });
+    at(15000, [=] { logT("17_while_drag"); slider_->setSliderDown(false); });
+    at(15500, [=] { logT("18_after_release"); QApplication::quit(); });
 }
 
 void MainWindow::aspectShots(const QString& dir) {
