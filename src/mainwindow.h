@@ -122,8 +122,8 @@ private:
     QWidget* buildInspector();
     void addShortcut(const QString& id, std::function<void()> fn);
     void applyShortcuts();      // Tastenkürzel aus den Einstellungen übernehmen (auch Tooltips)
-    // Abspiel-Leiste über dem Bild (beim Anschauen und im Vollbild): kommt bei Mausbewegung, Pause und Spulen,
-    // verschwindet nach ein paar Sekunden von selbst - auch pausiert. Weiterspielen holt sie nicht zurück.
+    // Vollbild-Leiste: kommt bei Mausbewegung, Pause und Spulen, verschwindet nach ein paar Sekunden von selbst -
+    // auch pausiert. Weiterspielen holt sie nicht zurück. Im Fenster steht die normale Leiste unter dem Video.
     bool overlayMode() const;
     bool barVisible() const;
     void showBar();
@@ -203,7 +203,8 @@ private:
     void addAudioFile(const QString& f, const MediaInfo& mi);
     void setPieceVolume(int v);
     void applyPlayerVolume();
-    void showScrubPreview(int sliderValue);
+    void showScrubPreview(int sliderValue, QSlider* from);
+    void wireSeekSlider(QSlider* s);  // Ziehen = Spulen mit Live-Bild, Klick = Sprung
     void exportVideo();
 
     Project pr_;
@@ -262,10 +263,11 @@ private:
     std::vector<BtnSpec> btns_;
     QPushButton *btnPlay_, *btnEdit_, *fsBtn_ = nullptr;
     std::map<QString, QAction*> scActions_;  // Tastenkürzel nach Kennung (shortcuts.h)
-    // Leiste über dem Bild (wie bei YouTube): Fortschritt oben, darunter Pause, Zeit, Bearbeiten, Einstellungen, Vollbild
-    QWidget* seekGap_ = nullptr;  // Platzhalter in der Bearbeiten-Leiste (dort spult man über die Zeitleiste)
+    // Vollbild: schmale Leiste über dem Bild (Pause, Fortschritt, Zeit)
+    QWidget* seekGap_ = nullptr;  // Platzhalter für die Fortschrittsleiste im Bearbeiten-Modus
     QFrame* fsBar_ = nullptr;
-    QPushButton *fsPlay_ = nullptr, *pbEdit_ = nullptr, *pbSettings_ = nullptr, *pbFs_ = nullptr;
+    QPushButton* fsPlay_ = nullptr;
+    QSlider* fsSlider_ = nullptr;
     QLabel* fsTime_ = nullptr;
     int hintGen_ = 0;           // zählt Hinweise im Bild, damit ein alter Ausblende-Timer keinen neuen Hinweis versteckt
     Osd* osd_ = nullptr;  // Symbol in der Bildmitte bei Pause/Abspielen/Spulen (wie bei YouTube)

@@ -64,7 +64,7 @@ int main(int argc, char* argv[]) {
     app.setWindowIcon(appIcon);
 
     QSettings st;
-    setCurrentTheme(st.value("theme", "dark").toString());
+    setCurrentTheme(st.value("theme", "mint").toString());
     setAccentColor(st.value("accent").toString());
     app.setStyleSheet(buildStyleSheet(currentTheme()));
 

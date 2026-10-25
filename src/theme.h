@@ -11,7 +11,7 @@ struct Theme {
     int fontPx = 13;
     int radius = 8;
     bool xp = false;
-    bool yt = false;   // runde "Chip"-Knöpfe ohne Rahmen wie bei YouTube; ausgewählt = Textfarbe als Fläche
+    bool yt = false;   // Stil Minimal: runde Knöpfe ohne Rahmen; ausgewählt = Textfarbe als Fläche
 };
 
 const QList<Theme>& themes();

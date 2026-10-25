@@ -13,32 +13,37 @@ static QList<Theme> makeThemes() {
         t.id = id; t.name = name;
         t.bg = bg; t.panel = panel; t.panel2 = panel2; t.border = border; t.text = text; t.muted = muted;
         t.accent = accent; t.accentText = acctext; t.timeline = tl; t.video = video;
-        t.font = font; t.fontPx = px; t.radius = r; t.xp = xp;
+        t.font = font ? font : "'Segoe UI','SF Pro Text','Helvetica Neue','Ubuntu','Noto Sans','DejaVu Sans',sans-serif";
+        t.fontPx = px; t.radius = r; t.xp = xp;
         return t;
     };
-    // Die normalen Designs im Stil von YouTube: ruhige Grautöne, runde Knöpfe ohne Rahmen, Rot als Akzent
-    const char* ytFont = "'Roboto','Segoe UI','SF Pro Text','Helvetica Neue','Ubuntu','Noto Sans','DejaVu Sans',sans-serif";
-    auto yt = [&](const char* id, const char* name, const char* bg, const char* panel, const char* panel2,
-                  const char* border, const char* text, const char* muted, const char* accent, const char* acctext,
-                  const char* tl, const char* hover) {
-        Theme t = mk(id, name, bg, panel, panel2, border, text, muted, accent, acctext, tl, "#000000", ytFont, 13, 12);
+    // Minimal: ruhige neutrale Grautöne, runde Knöpfe ohne Rahmen, keine knallige Farbe (Akzent frei wählbar)
+    auto minimal = [&](const char* id, const char* name, const char* bg, const char* panel, const char* panel2,
+                       const char* border, const char* text, const char* muted, const char* accent, const char* acctext,
+                       const char* tl, const char* hover) {
+        Theme t = mk(id, name, bg, panel, panel2, border, text, muted, accent, acctext, tl, "#000000", nullptr, 13, 12);
         t.hover = QColor(hover);
         t.yt = true;
         return t;
     };
     QList<Theme> list = {
-        yt("dark", "Dunkel / Dark", "#0f0f0f", "#181818", "#272727", "#303030", "#f1f1f1", "#aaaaaa", "#ff0033", "#ffffff",
-           "#121212", "#3f3f3f"),
-        yt("light", "Hell / Light", "#ffffff", "#f9f9f9", "#f2f2f2", "#e5e5e5", "#0f0f0f", "#606060", "#ff0033", "#ffffff",
-           "#f2f2f2", "#e5e5e5"),
-        yt("oled", "OLED", "#000000", "#0d0d0d", "#1f1f1f", "#262626", "#ffffff", "#9a9a9a", "#ff0033", "#ffffff",
-           "#080808", "#333333"),
-        // Studio: wie YouTube Studio – dunkelgrau mit Blau
-        yt("studio", "Studio", "#1f1f1f", "#282828", "#363636", "#3d3d3d", "#ffffff", "#aaaaaa", "#3ea6ff", "#0f0f0f",
-           "#1a1a1a", "#454545"),
-        // Der frühere Look (Rahmen, kleinere Rundungen) - die Farbe stellt man unter "Akzentfarbe" frei ein
-        mk("classic", "Klassisch / Classic", "#0d0f14", "#151821", "#1c202b", "#2a2f3d", "#e6e8ee", "#8b90a0", "#4ade9b",
-           "#04231a", "#0a0c11", "#000000"),
+        mk("mint", "Mint", "#0d0f14", "#151821", "#1c202b", "#2a2f3d", "#e6e8ee", "#8b90a0", "#4ade9b", "#04231a",
+           "#0a0c11", "#000000"),
+        // Studio: schlicht, dunkelgrau mit Türkis – wie bekannte Schnittprogramme
+        mk("studio", "Studio", "#161616", "#202020", "#2a2a2a", "#333333", "#e8e8e8", "#8c8c8c", "#1fc8d4", "#062326",
+           "#1a1a1a", "#000000", nullptr, 12, 6),
+        mk("ocean", "Ocean", "#0a101d", "#101a2e", "#16233c", "#263557", "#e3ecff", "#8fa3c7", "#4aa3ff", "#04101f",
+           "#08101c", "#000000"),
+        mk("violet", "Violett", "#100c1b", "#181227", "#221a36", "#392c59", "#efe9ff", "#9d8fc0", "#a78bfa", "#140a2e",
+           "#0c0916", "#000000"),
+        mk("sunset", "Sunset", "#17100e", "#221815", "#2d211c", "#493429", "#fbeee6", "#b59a8a", "#ff8a4c", "#2a1204",
+           "#120c0a", "#000000"),
+        mk("light", "Hell / Light", "#eef0f5", "#ffffff", "#eceef4", "#d3d7e0", "#1b1f2a", "#6a7083", "#2a9d6f",
+           "#ffffff", "#e4e7ee", "#111111"),
+        minimal("minimal", "Minimal", "#111111", "#1a1a1a", "#262626", "#2e2e2e", "#ededed", "#9a9a9a", "#ededed",
+                "#111111", "#141414", "#383838"),
+        minimal("minimal_light", "Minimal hell / light", "#fafafa", "#ffffff", "#f0f0f0", "#e4e4e4", "#161616", "#6b6b6b",
+                "#161616", "#ffffff", "#f0f0f0", "#e4e4e4"),
         mk("xp", "Windows XP", "#ECE9D8", "#F7F6EE", "#FFFFFF", "#7F9DB9", "#000000", "#4d4d4d", "#316AC5", "#FFFFFF",
            "#FFFFFF", "#000000", "'Tahoma','Verdana','DejaVu Sans',sans-serif", 12, 3, true),
         mk("terminal", "Terminal", "#0C0C0C", "#121212", "#1A1A1A", "#3A3A3A", "#CCCCCC", "#767676", "#F2F2F2", "#0C0C0C",
@@ -54,7 +59,7 @@ const QList<Theme>& themes() {
     return t;
 }
 
-static QString g_id = "dark", g_accent;
+static QString g_id = "mint", g_accent;
 static Theme g_current;  // Design mit eigener Akzentfarbe
 
 static void rebuildCurrent() {
@@ -87,7 +92,7 @@ void setAccentColor(const QString& color) {
 QString accentColor() { return g_accent; }
 
 const QList<QColor>& accentChoices() {
-    static const QList<QColor> c = {QColor("#ff0033"), QColor("#ff4d6d"), QColor("#ff7a3d"), QColor("#f5b400"),
+    static const QList<QColor> c = {QColor("#4ade9b"), QColor("#ff4d6d"), QColor("#ff7a3d"), QColor("#f5b400"),
                                     QColor("#22c55e"), QColor("#14b8a6"), QColor("#3ea6ff"), QColor("#8b5cf6"),
                                     QColor("#ec4899")};
     return c;
@@ -157,7 +162,7 @@ QSplitter::handle { background: transparent; }
 QSplitter::handle:hover { background: @accent@; border-radius: 2px; }
 )";
     if (t.yt) {
-        // YouTube: Chips statt Rahmen-Knöpfe, ausgewählt = helle (bzw. dunkle) Fläche wie der Chip "Alle"
+        // Minimal: runde Knöpfe ohne Rahmen, ausgewählt = Textfarbe als Fläche
         s += R"(
 QPushButton { background: @panel2@; border: none; border-radius: 18px; padding: 8px 16px; font-weight: 500; }
 QPushButton:hover { background: @hover@; }
@@ -173,7 +178,7 @@ QPushButton::menu-indicator { width: 0; image: none; }
 QFrame#card { background: @panel@; border: none; border-radius: 12px; }
 QDoubleSpinBox, QSpinBox, QComboBox, QLineEdit, QPlainTextEdit { background: @bg@; border: 1px solid @border@;
     border-radius: 8px; padding: 6px 10px; }
-QDoubleSpinBox:focus, QSpinBox:focus, QLineEdit:focus, QPlainTextEdit:focus { border-color: #3ea6ff; }
+QDoubleSpinBox:focus, QSpinBox:focus, QLineEdit:focus, QPlainTextEdit:focus { border-color: @muted@; }
 QComboBox QAbstractItemView { background: @panel@; border: none; border-radius: 12px; padding: 6px;
     selection-background-color: @hover@; selection-color: @text@; }
 QListWidget { background: transparent; border: none; padding: 0; }
@@ -186,12 +191,12 @@ QScrollBar::handle:horizontal, QScrollBar::handle:vertical { background: @hover@
 QSlider::groove:horizontal { height: 4px; background: @border@; border-radius: 2px; }
 QSlider::sub-page:horizontal { background: @accent@; border-radius: 2px; }
 QSlider::handle:horizontal { width: 13px; height: 13px; margin: -5px 0; background: @accent@; border-radius: 6px; }
-QToolTip { background: #616161; color: #ffffff; border: none; border-radius: 4px; padding: 6px 8px; }
+QToolTip { background: @panel2@; color: @text@; border: none; border-radius: 6px; padding: 6px 8px; }
 QMenu { background: @panel@; border: 1px solid @border@; border-radius: 12px; padding: 8px 0; }
 QMenu::item { padding: 8px 36px 8px 16px; color: @text@; }
 QMenu::item:selected { background: @hover@; }
 QCheckBox::indicator { width: 16px; height: 16px; border: 2px solid @muted@; border-radius: 3px; background: transparent; }
-QCheckBox::indicator:checked { background: #3ea6ff; border-color: #3ea6ff; }
+QCheckBox::indicator:checked { background: @accent@; border-color: @accent@; }
 QProgressBar { border: none; background: @panel2@; border-radius: 3px; }
 )";
     }

@@ -621,7 +621,7 @@ void MainWindow::buildUi() {
     top->addStretch();
     top->addWidget(bExp);
 
-    // Transportleiste (nur beim Bearbeiten - beim Anschauen liegt die Leiste über dem Bild)
+    // Transportleiste
     transport_ = new QWidget;
     transport_->setObjectName("transport");
     transport_->setAttribute(Qt::WA_StyledBackground);  // damit Themes (XP: Taskleiste) einen Hintergrund setzen können
@@ -639,8 +639,14 @@ void MainWindow::buildUi() {
     connect(btnEdit_, &QPushButton::toggled, this, &MainWindow::setEditMode);
     auto* bSet = mk(nullptr, "settings", Ic::Settings);
     connect(bSet, &QPushButton::clicked, this, &MainWindow::openSettings);
+    slider_ = new SeekSlider;
+    slider_->setRange(0, 10000);
+    slider_->setFocusPolicy(Qt::NoFocus);
+    wireSeekSlider(slider_);
     bar->addWidget(btnPlay_);
-    seekGap_ = new QWidget;
+    bar->addWidget(slider_, 1);
+    seekGap_ = new QWidget;  // beim Bearbeiten statt der Leiste: dort spult man über die Zeitleiste
+    seekGap_->hide();
     bar->addWidget(seekGap_, 1);
     bar->addWidget(lblTime_);
     bar->addWidget(btnEdit_);
@@ -760,7 +766,7 @@ void MainWindow::buildUi() {
     rootLayout_->addWidget(vSplit_, 1);
     setCentralWidget(root);
 
-    // Vollbild-Knopf direkt im Video (unten rechts) - nur beim Bearbeiten, sonst ist er in der Leiste
+    // Vollbild-Knopf direkt im Video (unten rechts)
     fsBtn_ = new QPushButton(view_);
     fsBtn_->setObjectName("vidbtn");
     fsBtn_->setFocusPolicy(Qt::NoFocus);
@@ -771,61 +777,36 @@ void MainWindow::buildUi() {
                           "QPushButton#vidbtn:hover { background: rgba(0,0,0,0.7); }");
     connect(fsBtn_, &QPushButton::clicked, this, &MainWindow::toggleFullscreen);
 
-    // Leiste über dem Bild wie bei YouTube: dunkler Verlauf, oben der rote Fortschritt, darunter die Knöpfe
+    // Vollbild: schmale Leiste über dem Bild - Pause, Fortschritt, Zeit. Verschwindet nach ein paar Sekunden.
+    const QString vidBtn = "QPushButton { background: transparent; border: none; border-radius: 7px; color: #ffffff; padding: 0 6px; }"
+                           "QPushButton:hover { background: rgba(255,255,255,0.14); }";
     fsBar_ = new QFrame(view_);
     fsBar_->setObjectName("fsbar");
-    fsBar_->setFixedHeight(74);
-    auto* fv = new QVBoxLayout(fsBar_);
-    fv->setContentsMargins(12, 18, 12, 6);
-    fv->setSpacing(2);
-    auto* seekBar = new SeekSlider;
-    slider_ = seekBar;
-    slider_->setRange(0, 10000);
-    slider_->setFocusPolicy(Qt::NoFocus);
-    slider_->setCursor(Qt::PointingHandCursor);
-    fv->addWidget(slider_);
-    auto* fb = new QHBoxLayout;
-    fb->setSpacing(4);
-    fv->addLayout(fb);
+    fsBar_->setStyleSheet("QFrame#fsbar { background: rgba(12,13,18,0.72); border: 1px solid rgba(255,255,255,0.14); border-radius: 10px; }"
+                          "QLabel { color: #ffffff; background: transparent; font-size: 12px; }"
+                          "QSlider::groove:horizontal { height: 4px; background: rgba(255,255,255,0.25); border-radius: 2px; }"
+                          "QSlider::sub-page:horizontal { background: #ffffff; border-radius: 2px; }"
+                          "QSlider::handle:horizontal { width: 12px; height: 12px; margin: -4px 0; border-radius: 6px; background: #ffffff; }");
+    fsBar_->setFixedHeight(36);
+    auto* fb = new QHBoxLayout(fsBar_);
+    fb->setContentsMargins(6, 2, 6, 2);
+    fb->setSpacing(8);
     fsPlay_ = new QPushButton;
-    pbEdit_ = new QPushButton;
-    pbSettings_ = new QPushButton;
-    pbFs_ = new QPushButton;
-    for (QPushButton* b : {fsPlay_, pbEdit_, pbSettings_, pbFs_}) {
-        b->setFixedHeight(36);
-        b->setIconSize(QSize(20, 20));
-        b->setFocusPolicy(Qt::NoFocus);
-        b->setCursor(Qt::PointingHandCursor);
-        b->setObjectName("barbtn");
-    }
-    for (QPushButton* b : {fsPlay_, pbSettings_, pbFs_}) b->setFixedWidth(40);
+    fsPlay_->setFixedSize(28, 28);
+    fsPlay_->setIconSize(QSize(16, 16));
+    fsPlay_->setFocusPolicy(Qt::NoFocus);
+    fsPlay_->setCursor(Qt::PointingHandCursor);
+    fsPlay_->setStyleSheet(vidBtn);
+    fsSlider_ = new SeekSlider;
+    fsSlider_->setRange(0, 10000);
+    fsSlider_->setFocusPolicy(Qt::NoFocus);
+    wireSeekSlider(fsSlider_);
     fsTime_ = new QLabel;
-    fsTime_->setObjectName("bartime");
     fb->addWidget(fsPlay_);
-    fb->addSpacing(6);
+    fb->addWidget(fsSlider_, 1);
     fb->addWidget(fsTime_);
-    fb->addStretch();
-    fb->addWidget(pbEdit_);
-    fb->addWidget(pbSettings_);
-    fb->addWidget(pbFs_);
     connect(fsPlay_, &QPushButton::clicked, this, &MainWindow::togglePlay);
-    connect(pbEdit_, &QPushButton::clicked, this, [this] { btnEdit_->setChecked(true); });
-    connect(pbSettings_, &QPushButton::clicked, this, &MainWindow::openSettings);
-    connect(pbFs_, &QPushButton::clicked, this, &MainWindow::toggleFullscreen);
-    // Ziehen am Fortschritt: Video pausiert und stumm und zeigt jedes Bild, an dem man vorbeikommt (dazu
-    // Vorschaubild + Zeit über der Leiste); beim Loslassen spielt es weiter. Ein Klick springt sofort.
-    connect(slider_, &QSlider::sliderPressed, this, [this] { beginScrub(); });
-    connect(slider_, &QSlider::sliderMoved, this, [this](int v) {
-        if (!slider_->isSliderDown()) return seek(v / 10000.0 * pr_.total());
-        showScrubPreview(v);
-        scrub(v / 10000.0 * pr_.total());  // das Video zeigt beim Ziehen jedes Bild, an dem man vorbeikommt
-    });
-    connect(slider_, &QSlider::sliderReleased, this, [this] {
-        scrubPrev_->hide();
-        seek(slider_->value() / 10000.0 * pr_.total());
-        endScrub();
-        showBar();
-    });
+    fsBar_->hide();
     fsHint_ = new QLabel(view_);
     fsHint_->setAlignment(Qt::AlignCenter);
     fsHint_->setStyleSheet("color:#ffffff;background:rgba(0,0,0,0.65);border-radius:12px;padding:10px 18px;font-size:15px;font-weight:600;");
@@ -929,22 +910,6 @@ void MainWindow::applyTheme() {
                                   : QString("color:%1;font-size:17px;background:transparent").arg(th.muted.name()));
     // XP: Taskleiste mit Innenabstand, sonst bündig
     if (auto* l = topbar_->layout()) l->setContentsMargins(th.xp ? QMargins(6, 4, 6, 4) : QMargins(0, 0, 0, 0));
-    // Leiste über dem Bild: immer dunkel (liegt auf dem Video), Fortschritt in der Akzentfarbe
-    const QString acc = th.xp ? QString("#3C9B3C") : th.accent.name();
-    fsBar_->setStyleSheet(QString(
-        "QFrame#fsbar { border: none; border-radius: 0; background: qlineargradient(x1:0,y1:0,x2:0,y2:1,"
-        " stop:0 rgba(0,0,0,0), stop:0.35 rgba(0,0,0,0.45), stop:1 rgba(0,0,0,0.82)); }"
-        "QLabel#bartime { color: #ffffff; background: transparent; font-size: 13px; font-weight: 500; }"
-        "QPushButton#barbtn { background: transparent; border: none; border-radius: 18px; color: #ffffff; padding: 0 10px;"
-        " font-weight: 600; }"
-        "QPushButton#barbtn:hover { background: rgba(255,255,255,0.16); }"
-        "QSlider { height: 16px; }"
-        "QSlider::groove:horizontal { height: 4px; background: rgba(255,255,255,0.3); border: none; border-radius: 2px; }"
-        "QSlider::sub-page:horizontal { background: %1; border: none; border-radius: 2px; }"
-        "QSlider::handle:horizontal { width: 13px; height: 13px; margin: -5px 0; border: none; border-radius: 6px; background: %1; }")
-                              .arg(acc));
-    pbEdit_->setIcon(makeIcon(Ic::Edit, Qt::white));
-    pbSettings_->setIcon(makeIcon(Ic::Settings, Qt::white));
     updatePlayIcon();
     placeVideoControls();
     view_->viewport()->update();
@@ -967,8 +932,8 @@ bool MainWindow::playingIntent() const {
            (scrubbing_ && scrubResume_);
 }
 
-// Abspiel-Ansicht (nicht Bearbeiten) und Vollbild: Leiste liegt über dem Bild und blendet sich aus
-bool MainWindow::overlayMode() const { return fullscreen_ || !btnEdit_->isChecked(); }
+// Nur im Vollbild liegt die Leiste über dem Bild und blendet sich aus
+bool MainWindow::overlayMode() const { return fullscreen_; }
 
 bool MainWindow::barVisible() const { return overlayMode() && (pr_.pieces.isEmpty() || barShown_); }
 
@@ -983,23 +948,16 @@ void MainWindow::showBar() {
     }
 }
 
-// Leiste: über die ganze Breite am unteren Bildrand
+// Leiste: nur im Vollbild, schmal und mittig über dem unteren Bildrand
 void MainWindow::updateFsBar() {
     if (!fsBar_) return;
     const bool show = barVisible();
-    fsBar_->setGeometry(0, view_->height() - fsBar_->height(), view_->width(), fsBar_->height());
+    const int w = std::min(view_->width() - 28, 900);
+    fsBar_->setGeometry((view_->width() - w) / 2, view_->height() - fsBar_->height() - 14, w, fsBar_->height());
     fsBar_->setVisible(show);
     if (show) fsBar_->raise();
-    fsBtn_->setVisible(!overlayMode());
-    pbEdit_->setVisible(!fullscreen_);
-    pbFs_->setIcon(makeIcon(fullscreen_ ? Ic::ExitFullscreen : Ic::Fullscreen, Qt::white));
-    QString fsTip = T("fullscreen_tip");
-    fsTip.remove(QRegularExpression("\\s*\\([^)]*\\)$"));
-    pbFs_->setToolTip(fsTip + " (" + shortcutText("fullscreen") + ")");
+    fsBtn_->setVisible(!fullscreen_ || show);
     fsPlay_->setToolTip(T("sc_play") + " (" + shortcutText("play") + ")");
-    pbEdit_->setText(T("edit"));
-    pbEdit_->setToolTip(T("edit") + " (" + shortcutText("edit") + ")");
-    pbSettings_->setToolTip(T("settings"));
     updatePlayIcon();
     updateUi();
 }
@@ -1070,7 +1028,9 @@ void MainWindow::placeVideoControls() {
     fsTip.remove(QRegularExpression("\\s*\\([^)]*\\)$"));
     fsBtn_->setToolTip(fsTip + " (" + shortcutText("fullscreen") + ")");
     updateFsBar();
-    fsBtn_->move(view_->width() - fsBtn_->width() - 14, view_->height() - 14 - fsBtn_->height());
+    // Knopf über der Leiste, wenn sie sichtbar ist
+    const int bottom = fsBar_ && fsBar_->isVisible() ? fsBar_->y() - 10 : view_->height() - 14;
+    fsBtn_->move(view_->width() - fsBtn_->width() - 14, bottom - fsBtn_->height());
     fsBtn_->raise();
     if (fsHint_->isVisible()) {
         fsHint_->adjustSize();
@@ -1197,11 +1157,17 @@ void MainWindow::setEditMode(bool on) {
 void MainWindow::applyLayoutVisibility() {
     const bool edit = btnEdit_->isChecked();
     topbar_->setVisible(!fullscreen_ && edit);  // obere Leiste nur beim Bearbeiten
+    // Abspielleiste: beim Anschauen direkt unter dem Video, beim Bearbeiten über Werkzeugen und Zeitleiste
+    auto* eb = static_cast<QVBoxLayout*>(editBottom_->layout());
+    if (edit && eb->indexOf(transport_) < 0) eb->insertWidget(0, transport_);
+    if (!edit && rootLayout_->indexOf(transport_) < 0) rootLayout_->addWidget(transport_);
+    transport_->setVisible(!fullscreen_);
+    slider_->setVisible(!edit);  // Bearbeiten: die Zeitleiste ersetzt die Fortschrittsleiste
+    seekGap_->setVisible(edit);
     editBottom_->setVisible(!fullscreen_ && edit);
     inspCard_->setVisible(!fullscreen_ && edit);
     mediaCard_->setVisible(!fullscreen_ && edit);
-    // Anschauen: Video füllt das Fenster, die Leiste liegt darüber (wie bei YouTube)
-    if (overlayMode()) {
+    if (fullscreen_) {
         rootLayout_->setContentsMargins(0, 0, 0, 0);
         rootLayout_->setSpacing(0);
         view_->setStyleSheet("QGraphicsView { border-radius: 0; border: none; }");
@@ -2708,6 +2674,10 @@ void MainWindow::exportVideo() {
 // Entwickler-Test: Fenster per grab() in Dateien rendern (greift nicht auf den Bildschirm zu)
 void MainWindow::selfShots(const QString& dir) {
     audio_->setMuted(true);  // Tests laufen lautlos
+    if (qEnvironmentVariableIsSet("CUTLINE_LANG")) {  // Website-Bilder in einer festen Sprache
+        setLanguage(qEnvironmentVariable("CUTLINE_LANG"));
+        retranslate();
+    }
     auto shot = [this, dir](const QString& name) { grab().save(dir + "/" + name + ".png"); };
     QTimer::singleShot(3500, this, [=] {
         shot("a_default");
@@ -2769,7 +2739,7 @@ void MainWindow::selfShots(const QString& dir) {
     });
     // Alle Themes einzeln (für die Website)
     QTimer::singleShot(13000, this, [=] {
-        setLanguage("en");
+        setLanguage(qEnvironmentVariable("CUTLINE_LANG", "en"));
         retranslate();
         const auto list = themes();
         for (int i = 0; i < list.size(); ++i) {
