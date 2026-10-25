@@ -582,7 +582,7 @@ void MainWindow::buildUi() {
     connect(barTimer_, &QTimer::timeout, this, [this] {
         if (!overlayMode() || pr_.pieces.isEmpty()) return;
         const bool onBar = fsBar_->isVisible() && fsBar_->rect().contains(fsBar_->mapFromGlobal(QCursor::pos()));
-        if (onBar || slider_->isSliderDown() || scrubbing_) {
+        if (onBar || fsSlider_->isSliderDown() || scrubbing_) {
             barTimer_->start();
             return;
         }
@@ -1592,8 +1592,25 @@ void MainWindow::pumpScrub() {
     }
 }
 
+// Fortschritt (unter dem Video und im Vollbild): Ziehen pausiert, macht stumm und zeigt jedes Bild, an dem man
+// vorbeikommt (dazu Vorschaubild + Zeit über dem Regler); beim Loslassen geht es weiter. Ein Klick springt sofort.
+void MainWindow::wireSeekSlider(QSlider* s) {
+    connect(s, &QSlider::sliderPressed, this, [this] { beginScrub(); });
+    connect(s, &QSlider::sliderMoved, this, [this, s](int v) {
+        if (!s->isSliderDown()) return seek(v / 10000.0 * pr_.total());
+        showScrubPreview(v, s);
+        scrub(v / 10000.0 * pr_.total());
+    });
+    connect(s, &QSlider::sliderReleased, this, [this, s] {
+        scrubPrev_->hide();
+        seek(s->value() / 10000.0 * pr_.total());
+        endScrub();
+        showBar();
+    });
+}
+
 // Vorschaubild + Zeit über dem Regler (sofort, ohne auf den Decoder zu warten)
-void MainWindow::showScrubPreview(int v) {
+void MainWindow::showScrubPreview(int v, QSlider* from) {
     if (pr_.pieces.isEmpty()) return;
     const double t = v / 10000.0 * pr_.total();
     double src = 0;
@@ -1623,8 +1640,8 @@ void MainWindow::showScrubPreview(int v) {
     p.end();
     scrubPrev_->setPixmap(pm);
     scrubPrev_->resize(w, h);
-    const QPoint base = slider_->mapTo(this, QPoint(0, 0));
-    const int hx = base.x() + 7 + int(double(v) / slider_->maximum() * (slider_->width() - 14));
+    const QPoint base = from->mapTo(this, QPoint(0, 0));
+    const int hx = base.x() + 7 + int(double(v) / from->maximum() * (from->width() - 14));
     scrubPrev_->move(std::clamp(hx - w / 2, 4, width() - w - 4), base.y() - h - 8);
     scrubPrev_->show();
     scrubPrev_->raise();
@@ -1676,13 +1693,18 @@ void MainWindow::tick() {
 void MainWindow::updateUi() {
     double total = pr_.total();
     // Beim Ziehen an der Leiste zeigt die Zeit genau die Mausstelle (das Bild kommt einen Moment später)
-    const double shown = slider_->isSliderDown() ? slider_->value() / 10000.0 * total : t_;
+    const QSlider* drag = slider_->isSliderDown() ? slider_ : fsSlider_ && fsSlider_->isSliderDown() ? fsSlider_ : nullptr;
+    const double shown = drag ? drag->value() / 10000.0 * total : t_;
     lblTime_->setText(fmtTime(shown) + " / " + fmtTime(total));
+    if (!slider_->isSliderDown()) {
+        QSignalBlocker b(slider_);
+        slider_->setValue(total > 0 ? int(t_ / total * 10000) : 0);
+    }
     if (fsBar_ && fsBar_->isVisible()) {
         fsTime_->setText(fmtTime(shown) + " / " + fmtTime(total));
-        if (!slider_->isSliderDown()) {
-            QSignalBlocker b(slider_);
-            slider_->setValue(total > 0 ? int(t_ / total * 10000) : 0);
+        if (!fsSlider_->isSliderDown()) {
+            QSignalBlocker b(fsSlider_);
+            fsSlider_->setValue(total > 0 ? int(t_ / total * 10000) : 0);
         }
     }
     for (Overlay* ov : overlays_) {
@@ -2692,7 +2714,7 @@ void MainWindow::selfShots(const QString& dir) {
         // Spulen: viele Ziehschritte hintereinander dürfen den Player nicht fluten
         for (int k = 0; k < 40; ++k) scrub(pr_.total() * k / 40.0);
         seek(1.0);
-        showScrubPreview(4200);
+        showScrubPreview(4200, slider_);
     });
     QTimer::singleShot(5500, this, [=] {
         shot("b_edit");
@@ -2812,7 +2834,7 @@ void MainWindow::fsShots(const QString& dir) {
     connect(vitem_->videoSink(), &QVideoSink::videoFrameChanged, this, [frames] { ++*frames; });
 
     // Leiste beim Anschauen: kommt mit der Maus, geht nach ein paar Sekunden - auch pausiert; Weiterspielen holt sie nicht
-    at(2500, [=] { togglePlay(); });
+    at(2500, [=] { enterFullscreen(); togglePlay(); });
     at(2700, [=] { step("01_play_start"); });
     at(5700, [=] { step("02_play_idle"); emit view_->mouseActivity(); });
     at(5900, [=] { step("03_mouse"); });
@@ -2827,26 +2849,26 @@ void MainWindow::fsShots(const QString& dir) {
     at(13250, [=] { step("10_space_tap_pauses"); togglePlay(); });
     // Spulen am Fortschritt: pausiert + stumm, danach spielt es weiter
     at(13600, [=] {
-        slider_->setSliderDown(true);
-        emit slider_->sliderPressed();
+        fsSlider_->setSliderDown(true);
+        emit fsSlider_->sliderPressed();
         *frames = 0;
         for (int k = 1; k <= 25; ++k)
             QTimer::singleShot(k * 40, this, [=] {
                 const int v = 2000 + k * 200;
-                slider_->setValue(v);
-                emit slider_->sliderMoved(v);
+                fsSlider_->setValue(v);
+                emit fsSlider_->sliderMoved(v);
             });
     });
     at(14700, [=] {
         logLine(QString("scrub 1s: frames shown=%1 (25 mouse steps)").arg(*frames));
         step("11_while_scrub");
-        slider_->setSliderDown(false);
-        emit slider_->sliderReleased();
+        fsSlider_->setSliderDown(false);
+        emit fsSlider_->sliderReleased();
     });
     at(15300, [=] { step("12_after_scrub_plays"); togglePlay(); });
 
     // Bearbeiten: Ränder kürzen (Rand folgt der Maus, danach rückt alles zusammen), Abschnitte verschieben
-    at(15500, [=] { btnEdit_->setChecked(true); });
+    at(15500, [=] { exitFullscreen(); btnEdit_->setChecked(true); });
     at(16500, [=] {
         step("13_edit");
         seek(pr_.total() / 2);
@@ -2955,10 +2977,14 @@ void MainWindow::fsShots(const QString& dir) {
         setAccentColor("#22c55e");
         applyTheme();
         step("20_accent_green");
-        setCurrentTheme("classic");
-        setAccentColor("#8b5cf6");
+        setCurrentTheme("minimal");
+        setAccentColor(QString());
+        btnEdit_->setChecked(true);
         applyTheme();
-        step("20b_classic_violet");
+        step("20b_minimal");
+        setCurrentTheme("minimal_light");
+        applyTheme();
+        step("20c_minimal_light");
         SettingsDialog d(this);
         QTimer::singleShot(300, &d, [&d, dir] { d.grab().save(dir + "/fs_21_settings.png"); d.accept(); });
         d.exec();
