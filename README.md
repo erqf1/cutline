@@ -2,7 +2,7 @@
 
 A simple, fast video editor and player. Open a video (or a music file), cut it, change the speed of parts, blur faces or text, draw on it, add shapes, drop in images, videos and music, and export.
 
-- **Also a good video and music player.** Make it your default app for mp4/mov/mkv and mp3/wav/flac: instant start, YouTube-style controls that hide by themselves, hold `Space` for 2× speed, click to pause, 5-second skip, ambient light around the video.
+- **Also a good video and music player.** Make it your default app for mp4/mov/mkv and mp3/wav/flac: instant start, live frames while scrubbing, controls that hide by themselves in fullscreen, hold `Space` for 2× speed, click to pause, 5-second skip, ambient light around the video.
 - **Opens instantly.** No import step, no project setup. Drag a video in and it plays – waveforms and thumbnails for editing are only computed when you start editing.
 - **Edit mode with a timeline.** Drag segment edges to trim (the edge follows your mouse, the gap closes when you let go), drag segments to reorder them, split only what is selected (or everything at the playhead), per-segment speed, zoom in/out.
 - **Resizable layout** like in CapCut: drag the dividers to make the media panel, the video, the properties or the timeline bigger or smaller.
@@ -14,7 +14,7 @@ A simple, fast video editor and player. Open a video (or a music file), cut it, 
 - **Sensible export.** MP4, MOV, MKV, GIF or audio only (MP3, WAV, M4A). Pick resolution (4K … SD), frame rate and quality – only values up to the original are offered.
 - **Checks for updates** and installs them on request (or ignore a version).
 - **Fullscreen** with `F11`, click the video to pause, arrow keys jump 5 seconds.
-- **12 languages** and several themes: YouTube-style Dark, Light, OLED and Studio, plus Windows XP Luna and Terminal.
+- **12 languages** and ten themes: Mint, Studio, Ocean, Violet, Sunset, Light, the calm Minimal style (dark and light), Windows XP Luna and Terminal – plus any accent color you like.
 - Uses your GPU encoder when available (NVENC, Quick Sync, AMF, VideoToolbox), otherwise x264.
 
 ## Download
