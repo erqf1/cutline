@@ -1,5 +1,6 @@
 #include "dialogs.h"
 #include <QProcess>
+#include <QColorDialog>
 #include <cmath>
 #include <QLocale>
 
@@ -60,7 +61,55 @@ SettingsDialog::SettingsDialog(QWidget* parent) : QDialog(parent) {
     theme_->setCurrentIndex(std::max<int>(0, theme_->findData(currentTheme().id)));
     form->addRow(lblLang_, lang_);
     form->addRow(lblTheme_, theme_);
+    // Akzentfarbe: Vorgaben, eigene Farbe oder die des Designs
+    lblAccent_ = new QLabel;
+    auto* accentBox = new QWidget;
+    auto* ag = new QGridLayout(accentBox);
+    ag->setContentsMargins(0, 0, 0, 0);
+    ag->setHorizontalSpacing(8);
+    ag->setVerticalSpacing(8);
+    const QList<QColor>& choices = accentChoices();
+    for (int i = 0; i < choices.size(); ++i) {
+        auto* b = new QPushButton;
+        b->setFixedSize(28, 28);
+        b->setCursor(Qt::PointingHandCursor);
+        b->setFocusPolicy(Qt::NoFocus);
+        b->setProperty("accent", choices[i].name());
+        connect(b, &QPushButton::clicked, this, [this, c = choices[i].name()] {
+            setAccentColor(c);
+            emit accentChanged(c);
+            markAccent();
+        });
+        swatches_ << b;
+        ag->addWidget(b, 0, i);
+    }
+    auto* row2 = new QHBoxLayout;
+    row2->setSpacing(8);
+    accentCustom_ = new QPushButton;
+    accentDefault_ = new QPushButton;
+    for (QPushButton* b : {accentCustom_, accentDefault_}) {
+        b->setFocusPolicy(Qt::NoFocus);
+        b->setCursor(Qt::PointingHandCursor);
+        row2->addWidget(b);
+    }
+    row2->addStretch();
+    ag->addLayout(row2, 1, 0, 1, int(choices.size()));
+    connect(accentCustom_, &QPushButton::clicked, this, [this] {
+        const QColor cur = currentTheme().accent;
+        const QColor c = QColorDialog::getColor(cur, this, T("accent"));
+        if (!c.isValid()) return;
+        setAccentColor(c.name());
+        emit accentChanged(c.name());
+        markAccent();
+    });
+    connect(accentDefault_, &QPushButton::clicked, this, [this] {
+        setAccentColor(QString());
+        emit accentChanged(QString());
+        markAccent();
+    });
+    form->addRow(lblAccent_, accentBox);
     v->addLayout(form);
+    markAccent();
     update_ = new QPushButton;
     connect(update_, &QPushButton::clicked, this, &SettingsDialog::checkUpdates);
     auto* ver = new QLabel("Cutline " APP_VERSION);
@@ -86,15 +135,36 @@ SettingsDialog::SettingsDialog(QWidget* parent) : QDialog(parent) {
         emit languageChanged(languageCodes().value(i, "en"));
         retranslate();
     });
-    connect(theme_, &QComboBox::currentIndexChanged, this,
-            [this] { emit themeChanged(theme_->currentData().toString()); });
+    connect(theme_, &QComboBox::currentIndexChanged, this, [this] {
+        emit themeChanged(theme_->currentData().toString());
+        markAccent();
+    });
     retranslate();
+}
+
+void SettingsDialog::markAccent() {
+    const QString own = accentColor();
+    const bool xp = currentTheme().xp;  // XP behält seine Farben
+    const QColor ring = currentTheme().text;
+    for (QPushButton* b : swatches_) {
+        const QString c = b->property("accent").toString();
+        const bool on = !own.isEmpty() && c.compare(own, Qt::CaseInsensitive) == 0;
+        b->setStyleSheet(QString("QPushButton { background: %1; border-radius: 14px; padding: 0; min-width: 28px; max-width: 28px;"
+                                 " min-height: 28px; max-height: 28px; border: %2; }")
+                             .arg(c, on ? QString("3px solid %1").arg(ring.name()) : QString("2px solid transparent")));
+        b->setEnabled(!xp);
+    }
+    accentCustom_->setEnabled(!xp);
+    accentDefault_->setEnabled(!xp);
 }
 
 void SettingsDialog::retranslate() {
     setWindowTitle(T("settings"));
     lblLang_->setText(T("language"));
     lblTheme_->setText(T("theme"));
+    lblAccent_->setText(T("accent"));
+    accentCustom_->setText(T("custom_color"));
+    accentDefault_->setText(T("theme_color"));
     ok_->setText(T("ok"));
     update_->setText(T("upd_check"));
     keys_->setText(T("shortcuts") + "…");

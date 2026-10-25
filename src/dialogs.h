@@ -28,13 +28,16 @@ public:
 signals:
     void languageChanged(const QString& code);
     void themeChanged(const QString& id);
+    void accentChanged(const QString& color);  // leer = Farbe des Designs
     void checkUpdates();
 
 private:
     void retranslate();
-    QLabel *lblLang_, *lblTheme_;
+    void markAccent();  // gewählte Farbe umranden
+    QLabel *lblLang_, *lblTheme_, *lblAccent_;
     QComboBox *lang_, *theme_;
-    QPushButton *ok_, *update_, *keys_;
+    QPushButton *ok_, *update_, *keys_, *accentDefault_, *accentCustom_;
+    QList<QPushButton*> swatches_;
 };
 
 // Knopf, der beim Anklicken die nächste Tastenkombination aufnimmt (Esc bricht ab, Rücktaste entfernt die Taste)

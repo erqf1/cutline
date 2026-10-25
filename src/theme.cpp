@@ -36,6 +36,9 @@ static QList<Theme> makeThemes() {
         // Studio: wie YouTube Studio – dunkelgrau mit Blau
         yt("studio", "Studio", "#1f1f1f", "#282828", "#363636", "#3d3d3d", "#ffffff", "#aaaaaa", "#3ea6ff", "#0f0f0f",
            "#1a1a1a", "#454545"),
+        // Der frühere Look (Rahmen, kleinere Rundungen) - die Farbe stellt man unter "Akzentfarbe" frei ein
+        mk("classic", "Klassisch / Classic", "#0d0f14", "#151821", "#1c202b", "#2a2f3d", "#e6e8ee", "#8b90a0", "#4ade9b",
+           "#04231a", "#0a0c11", "#000000"),
         mk("xp", "Windows XP", "#ECE9D8", "#F7F6EE", "#FFFFFF", "#7F9DB9", "#000000", "#4d4d4d", "#316AC5", "#FFFFFF",
            "#FFFFFF", "#000000", "'Tahoma','Verdana','DejaVu Sans',sans-serif", 12, 3, true),
         mk("terminal", "Terminal", "#0C0C0C", "#121212", "#1A1A1A", "#3A3A3A", "#CCCCCC", "#767676", "#F2F2F2", "#0C0C0C",
@@ -51,15 +54,44 @@ const QList<Theme>& themes() {
     return t;
 }
 
-static QString g_id = "dark";
+static QString g_id = "dark", g_accent;
+static Theme g_current;  // Design mit eigener Akzentfarbe
 
-const Theme& currentTheme() {
+static void rebuildCurrent() {
+    g_current = themes().first();
     for (const Theme& t : themes())
-        if (t.id == g_id) return t;
-    return themes().first();
+        if (t.id == g_id) g_current = t;
+    const QColor c(g_accent);
+    if (c.isValid() && !g_current.xp) {
+        g_current.accent = c;
+        // Schrift auf der Akzentfläche: dunkel auf hellen Farben, sonst weiß
+        g_current.accentText = c.lightnessF() > 0.62 ? QColor("#0f0f0f") : QColor("#ffffff");
+    }
 }
 
-void setCurrentTheme(const QString& id) { g_id = id; }
+const Theme& currentTheme() {
+    if (g_current.id.isEmpty()) rebuildCurrent();
+    return g_current;
+}
+
+void setCurrentTheme(const QString& id) {
+    g_id = id;
+    rebuildCurrent();
+}
+
+void setAccentColor(const QString& color) {
+    g_accent = QColor(color).isValid() ? QColor(color).name() : QString();
+    rebuildCurrent();
+}
+
+QString accentColor() { return g_accent; }
+
+const QList<QColor>& accentChoices() {
+    static const QList<QColor> c = {QColor("#ff0033"), QColor("#ff4d6d"), QColor("#ff7a3d"), QColor("#f5b400"),
+                                    QColor("#22c55e"), QColor("#14b8a6"), QColor("#3ea6ff"), QColor("#8b5cf6"),
+                                    QColor("#ec4899")};
+    return c;
+}
 
 // Grüner XP-Haken für Checkboxen (einmal gezeichnet, als Datei für das Stylesheet)
 static QString xpCheckImage() {

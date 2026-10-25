@@ -632,10 +632,7 @@ void MainWindow::buildUi() {
     connect(btnPlay_, &QPushButton::clicked, this, &MainWindow::togglePlay);
     seekTimer_ = new QTimer(this);
     seekTimer_->setSingleShot(true);
-    connect(seekTimer_, &QTimer::timeout, this, [this] {
-        seekThrottle_.restart();
-        seek(scrubTarget_);
-    });
+    connect(seekTimer_, &QTimer::timeout, this, &MainWindow::pumpScrub);
     lblTime_ = new QLabel("00:00.0 / 00:00.0");
     btnEdit_ = mk("edit", nullptr, Ic::Edit, nullptr, "@edit");
     btnEdit_->setCheckable(true);
@@ -815,13 +812,13 @@ void MainWindow::buildUi() {
     connect(pbEdit_, &QPushButton::clicked, this, [this] { btnEdit_->setChecked(true); });
     connect(pbSettings_, &QPushButton::clicked, this, &MainWindow::openSettings);
     connect(pbFs_, &QPushButton::clicked, this, &MainWindow::toggleFullscreen);
-    // Ziehen am Fortschritt: Video pausiert und stumm, Vorschaubild + Zeit wandern mit, das Video springt beim
-    // Loslassen und spielt dann weiter. Ein Klick (ohne Ziehen) springt sofort.
+    // Ziehen am Fortschritt: Video pausiert und stumm und zeigt jedes Bild, an dem man vorbeikommt (dazu
+    // Vorschaubild + Zeit über der Leiste); beim Loslassen spielt es weiter. Ein Klick springt sofort.
     connect(slider_, &QSlider::sliderPressed, this, [this] { beginScrub(); });
     connect(slider_, &QSlider::sliderMoved, this, [this](int v) {
         if (!slider_->isSliderDown()) return seek(v / 10000.0 * pr_.total());
         showScrubPreview(v);
-        updateUi();
+        scrub(v / 10000.0 * pr_.total());  // das Video zeigt beim Ziehen jedes Bild, an dem man vorbeikommt
     });
     connect(slider_, &QSlider::sliderReleased, this, [this] {
         scrubPrev_->hide();
@@ -957,7 +954,8 @@ void MainWindow::applyTheme() {
 
 void MainWindow::updatePlayIcon() {
     const Theme& th = currentTheme();
-    bool playing = player_->playbackState() == QMediaPlayer::PlayingState;
+    // beim Spulen zählt, ob es danach weiterläuft (das kurze Anspielen soll nicht flackern)
+    const bool playing = scrubbing_ ? scrubResume_ : player_->playbackState() == QMediaPlayer::PlayingState;
     btnPlay_->setIcon(makeIcon(playing ? Ic::Pause : Ic::Play, th.accentText));
     btnPlay_->setIconSize(QSize(20, 20));
     if (fsPlay_) fsPlay_->setIcon(makeIcon(playing ? Ic::Pause : Ic::Play, Qt::white));
@@ -1290,6 +1288,10 @@ void MainWindow::openSettings() {
         QSettings().setValue("theme", id);
         applyTheme();
     });
+    connect(&dlg, &SettingsDialog::accentChanged, this, [this](const QString& color) {
+        QSettings().setValue("accent", color);  // setAccentColor hat der Dialog schon gemacht
+        applyTheme();
+    });
     dlg.exec();
     applyShortcuts();
 }
@@ -1466,6 +1468,11 @@ void MainWindow::onFrame(const QVideoFrame& f) {
         firstFrame_ = true;
         trace("first frame");
     }
+    if (scrubInFlight_) {  // angefordertes Bild beim Spulen ist da: anhalten, gleich das nächste
+        scrubInFlight_ = false;
+        if (player_->playbackState() == QMediaPlayer::PlayingState) player_->pause();
+        QTimer::singleShot(0, this, &MainWindow::pumpScrub);
+    }
     frame_ = f;
     frameImgValid_ = false;
     bool blurVisible = false;
@@ -1522,6 +1529,7 @@ void MainWindow::activate(int i, double srcPos, bool play) {
         view_->setAudioTitle(pr_.sources[p.src].video ? QString() : QFileInfo(pr_.sources[p.src].path).completeBaseName());
         player_->setSource(QUrl::fromLocalFile(pr_.sources[p.src].path));
         player_->pause();
+        ++posSets_;
         return;
     }
     if (pending_) {  // Ladevorgang läuft noch: Ziel aktualisieren
@@ -1537,6 +1545,7 @@ void MainWindow::activate(int i, double srcPos, bool play) {
         // Beim Abspielen kurz stumm: sonst spielt der Puffer noch Ton von der alten Stelle ("komische Geräusche")
         if (player_->playbackState() == QMediaPlayer::PlayingState) muteBriefly();
         player_->setPosition(qint64(srcPos * 1000));
+        ++posSets_;
         seeking_ = true;
         seekSrc_ = srcPos;
         seekClock_.restart();
@@ -1570,6 +1579,10 @@ void MainWindow::beginScrub() {
 void MainWindow::endScrub() {
     if (!scrubbing_) return;
     scrubbing_ = false;
+    scrubInFlight_ = false;
+    scrubIssued_ = -1;
+    seekTimer_->stop();
+    if (!scrubResume_ && player_->playbackState() == QMediaPlayer::PlayingState) player_->pause();
     if (scrubResume_) {
         if (pending_) pendingPlay_ = true;
         else if (t_ < pr_.total() - 0.05) player_->play();
@@ -1583,16 +1596,34 @@ void MainWindow::scrub(double t) {
     if (pr_.pieces.isEmpty()) return;
     beginScrub();
     scrubTarget_ = std::clamp(t, 0.0, pr_.total());
-    const qint64 since = seekThrottle_.isValid() ? seekThrottle_.elapsed() : 1000;
-    if (since >= 120) {
-        seekTimer_->stop();
-        seekThrottle_.restart();
-        seek(scrubTarget_);
-        return;
-    }
     t_ = scrubTarget_;
     updateUi();
-    if (!seekTimer_->isActive()) seekTimer_->start(int(120 - since));
+    pumpScrub();
+}
+
+// Beim Spulen jedes Bild zeigen, an dem man vorbeikommt: Sprung anfordern, auf das Bild warten (onFrame),
+// dann gleich zur aktuellen Mausposition weiter. Ein angefordertes Bild wird nie abgebrochen (bei Videos mit
+// seltenen Schlüsselbildern dauert das Dekodieren länger); kommt es gar nicht, geht es nach 800 ms weiter.
+void MainWindow::pumpScrub() {
+    if (!scrubbing_ || pr_.pieces.isEmpty()) return;
+    if (scrubInFlight_ && scrubFlight_.elapsed() < 800) {
+        if (!seekTimer_->isActive()) seekTimer_->start(800 - int(scrubFlight_.elapsed()));
+        return;
+    }
+    scrubInFlight_ = false;
+    if (std::abs(scrubTarget_ - scrubIssued_) < 0.005) return;  // genau dieses Bild ist schon da
+    scrubIssued_ = scrubTarget_;
+    const int before = posSets_;
+    const double target = scrubTarget_;
+    seek(target);  // stoppt seekTimer_
+    if (posSets_ != before) {  // Player springt wirklich: auf das Bild warten
+        scrubInFlight_ = true;
+        scrubFlight_.restart();
+        seekTimer_->start(800);
+        // Pausiert liefert Qts Player nach einem Sprung nur beim ersten Mal ein neues Bild - danach bleibt das
+        // alte stehen. Darum kurz (stumm) anspielen; sobald das Bild da ist, hält onFrame wieder an.
+        if (!pending_ && player_->playbackState() != QMediaPlayer::PlayingState) player_->play();
+    }
 }
 
 // Vorschaubild + Zeit über dem Regler (sofort, ohne auf den Decoder zu warten)
@@ -1604,7 +1635,7 @@ void MainWindow::showScrubPreview(int v) {
     QImage thumb;
     if (const ThumbSet* ts = thumbs(pr_.pieces[i].src); ts && !ts->imgs.isEmpty())
         thumb = ts->imgs[std::clamp(int(src / ts->step), 0, int(ts->imgs.size()) - 1)]
-                    .scaledToHeight(96, Qt::SmoothTransformation);
+                    .scaledToHeight(100, Qt::SmoothTransformation);
     const QString label = fmtTime(t);
     QFont f = font();
     f.setBold(true);
@@ -1648,7 +1679,7 @@ void MainWindow::seek(double t) {
 
 // Abschnittswechsel während der Wiedergabe: springt zum nächsten Abschnitt und setzt das Tempo
 void MainWindow::tick() {
-    if (pr_.pieces.isEmpty() || pending_) return;
+    if (pr_.pieces.isEmpty() || pending_ || scrubbing_) return;  // beim Spulen bestimmt die Maus die Stelle
     cur_ = std::min<int>(cur_, pr_.pieces.size() - 1);
     const Piece* p = &pr_.pieces[cur_];
     double src = player_->position() / 1000.0;
@@ -1678,7 +1709,7 @@ void MainWindow::tick() {
 
 void MainWindow::updateUi() {
     double total = pr_.total();
-    // Beim Ziehen an der Leiste zeigt die Zeit schon die Zielstelle, das Video bleibt bis zum Loslassen
+    // Beim Ziehen an der Leiste zeigt die Zeit genau die Mausstelle (das Bild kommt einen Moment später)
     const double shown = slider_->isSliderDown() ? slider_->value() / 10000.0 * total : t_;
     lblTime_->setText(fmtTime(shown) + " / " + fmtTime(total));
     if (fsBar_ && fsBar_->isVisible()) {
@@ -1718,7 +1749,7 @@ void MainWindow::syncAudioPlayers() {
 }
 
 void MainWindow::updateAudio(bool force) {
-    const bool playing = player_->playbackState() == QMediaPlayer::PlayingState;
+    const bool playing = player_->playbackState() == QMediaPlayer::PlayingState && !scrubbing_;
     for (auto& [id, ap] : audioPlayers_) {
         AudioClip* a = pr_.audio(id);
         if (!a) continue;
@@ -1766,7 +1797,7 @@ void MainWindow::startThumbs(int si) {
         timeline_->update();
     });
     p->start(ffmpegPath(), {"-hide_banner", "-v", "error", "-skip_frame", "nokey", "-i", s.path, "-an", "-sn",
-                            "-vf", QString("fps=1/%1,scale=-2:80").arg(ts->step, 0, 'f', 3), "-q:v", "5",
+                            "-vf", QString("fps=1/%1,scale=-2:120").arg(ts->step, 0, 'f', 3), "-q:v", "3",
                             d + "/t%05d.jpg"});
 }
 
@@ -2806,6 +2837,9 @@ void MainWindow::fsShots(const QString& dir) {
         QApplication::sendEvent(w, &ev);
     };
     auto at = [this](int ms, std::function<void()> fn) { QTimer::singleShot(ms, this, fn); };
+    // Ziehen über 1 s: wie viele echte Bilder zeigt das Video dabei?
+    auto frames = std::make_shared<int>(0);
+    connect(vitem_->videoSink(), &QVideoSink::videoFrameChanged, this, [frames] { ++*frames; });
 
     // Leiste beim Anschauen: kommt mit der Maus, geht nach ein paar Sekunden - auch pausiert; Weiterspielen holt sie nicht
     at(2500, [=] { togglePlay(); });
@@ -2814,10 +2848,10 @@ void MainWindow::fsShots(const QString& dir) {
     at(5900, [=] { step("03_mouse"); });
     at(8900, [=] { step("04_idle_again"); togglePlay(); });
     at(9100, [=] { step("05_paused_shows"); });
-    at(12100, [=] { step("06_paused_idle_hides"); togglePlay(); });
+    at(12100, [=] { step("06_paused_idle_hides"); togglePlay(); *frames = 0; });
     at(12300, [=] { step("07_unpause_stays_hidden"); });
     // Leertaste halten = 2×, kurz tippen = Pause
-    at(12400, [=] { key(QEvent::KeyPress); });
+    at(12400, [=] { logLine(QString("frames while playing 12.3-12.4s: %1").arg(*frames)); key(QEvent::KeyPress); });
     at(12950, [=] { step("08_space_held"); key(QEvent::KeyRelease); });
     at(13100, [=] { step("09_space_released"); key(QEvent::KeyPress); key(QEvent::KeyRelease); });
     at(13250, [=] { step("10_space_tap_pauses"); togglePlay(); });
@@ -2825,22 +2859,32 @@ void MainWindow::fsShots(const QString& dir) {
     at(13600, [=] {
         slider_->setSliderDown(true);
         emit slider_->sliderPressed();
-        slider_->setValue(6000);
-        emit slider_->sliderMoved(6000);
+        *frames = 0;
+        for (int k = 1; k <= 25; ++k)
+            QTimer::singleShot(k * 40, this, [=] {
+                const int v = 2000 + k * 200;
+                slider_->setValue(v);
+                emit slider_->sliderMoved(v);
+            });
     });
-    at(13800, [=] { step("11_while_scrub"); slider_->setSliderDown(false); emit slider_->sliderReleased(); });
-    at(14300, [=] { step("12_after_scrub_plays"); togglePlay(); });
+    at(14700, [=] {
+        logLine(QString("scrub 1s: frames shown=%1 (25 mouse steps)").arg(*frames));
+        step("11_while_scrub");
+        slider_->setSliderDown(false);
+        emit slider_->sliderReleased();
+    });
+    at(15300, [=] { step("12_after_scrub_plays"); togglePlay(); });
 
     // Bearbeiten: Ränder kürzen (Rand folgt der Maus, danach rückt alles zusammen), Abschnitte verschieben
-    at(14500, [=] { btnEdit_->setChecked(true); });
-    at(15500, [=] {
+    at(15500, [=] { btnEdit_->setChecked(true); });
+    at(16500, [=] {
         step("13_edit");
         seek(pr_.total() / 2);
         selectPiece(-1);
         doSplit();  // zwei Abschnitte
         logLine(QString("split: pieces=%1 total=%2").arg(pr_.pieces.size()).arg(pr_.total(), 0, 'f', 2));
     });
-    at(16000, [=] {
+    at(17000, [=] {
         // rechten Rand des ersten Abschnitts nach links ziehen
         const double x1 = 14 + pr_.outStart(1) * (timeline_->width() - 28) / pr_.total();
         const double y = 26 + 40;
@@ -2851,14 +2895,14 @@ void MainWindow::fsShots(const QString& dir) {
         logLine(QString("while trim: total=%1 tlw=%2 scrubbing=%3").arg(pr_.total(), 0, 'f', 2).arg(timeline_->width()).arg(scrubbing_));
         timeline_->grab().save(dir + "/fs_14_trim_drag.png");
     });
-    at(16400, [=] {
+    at(17400, [=] {
         const double x1 = 14 + pr_.outStart(1) * (timeline_->width() - 28) / pr_.total();
         mouse(timeline_, QEvent::MouseButtonRelease, QPointF(x1, 66));
         timeline_->grab().save(dir + "/fs_15_trim_released.png");
         logLine(QString("after trim: total=%1 piece0=%2..%3").arg(pr_.total(), 0, 'f', 2)
                     .arg(pr_.pieces[0].start, 0, 'f', 2).arg(pr_.pieces[0].end, 0, 'f', 2));
     });
-    at(16800, [=] {
+    at(17800, [=] {
         // ersten Abschnitt hinter den zweiten ziehen
         const double w = timeline_->width() - 28, tot = pr_.total();
         const double xa = 14 + pr_.outStart(0) * w / tot + pr_.pieces[0].outDur() * w / tot / 2;
@@ -2872,7 +2916,7 @@ void MainWindow::fsShots(const QString& dir) {
         logLine(QString("reorder after: first=%1 second=%2").arg(pr_.pieces[0].start, 0, 'f', 2).arg(pr_.pieces[1].start, 0, 'f', 2));
     });
     // Zeichnen und Formen
-    at(17200, [=] {
+    at(18200, [=] {
         seek(0.5);
         setTool(1);
         const double W = pr_.vw, H = pr_.vh;
@@ -2893,7 +2937,7 @@ void MainWindow::fsShots(const QString& dir) {
         }
         logLine(QString("shapes: items=%1 tool=%2").arg(pr_.items.size()).arg(tool_));
     });
-    at(17800, [=] {
+    at(18800, [=] {
         step("17_draw_shapes");
         // Export mit Zeichnung und Formen
         ensureProbed();
@@ -2914,18 +2958,18 @@ void MainWindow::fsShots(const QString& dir) {
         fr.waitForFinished(30000);
     });
     // Tondatei öffnen und als Video exportieren
-    at(19000, [=] {
+    at(20000, [=] {
         if (audioFile.isEmpty()) return;
         btnEdit_->setChecked(false);
         openFile(audioFile);
     });
-    at(21000, [=] {
+    at(22000, [=] {
         if (!audioFile.isEmpty()) {
             step("18_audio_file");
             togglePlay();
         }
     });
-    at(22000, [=] {
+    at(23000, [=] {
         if (!audioFile.isEmpty()) {
             step("19_audio_playing");
             ensureProbed();
@@ -2937,6 +2981,18 @@ void MainWindow::fsShots(const QString& dir) {
             pr.waitForFinished(180000);
             logLine(QString("export audio exit=%1 %2").arg(pr.exitCode()).arg(QString::fromUtf8(pr.readAllStandardError().right(400))));
         }
+        // eigene Akzentfarbe + Einstellungsfenster
+        setAccentColor("#22c55e");
+        applyTheme();
+        step("20_accent_green");
+        setCurrentTheme("classic");
+        setAccentColor("#8b5cf6");
+        applyTheme();
+        step("20b_classic_violet");
+        SettingsDialog d(this);
+        QTimer::singleShot(300, &d, [&d, dir] { d.grab().save(dir + "/fs_21_settings.png"); d.accept(); });
+        d.exec();
+        setAccentColor(QString());
         QApplication::quit();
     });
 }

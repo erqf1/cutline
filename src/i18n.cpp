@@ -127,6 +127,9 @@ const Entry kTable[] = {
  {"draw_hint", {"Auf dem Video malen – D oder Esc beendet das Zeichnen","Paint on the video – press D or Esc to stop drawing","Pinta sobre el vídeo: pulsa D o Esc para terminar","Dessinez sur la vidéo – D ou Échap pour arrêter","Disegna sul video – D o Esc per terminare","Desenhe sobre o vídeo – D ou Esc para terminar","Teken op de video – D of Esc stopt het tekenen","Rysuj na wideo – D lub Esc kończy rysowanie","Videonun üzerine çizin – bitirmek için D veya Esc","Рисуйте на видео – D или Esc завершает рисование","動画の上に描けます – D または Esc で終了","在视频上绘画 – 按 D 或 Esc 结束"}},
  {"shape_hint", {"Auf dem Video ziehen, um die Form zu zeichnen","Drag on the video to draw the shape","Arrastra sobre el vídeo para dibujar la forma","Faites glisser sur la vidéo pour tracer la forme","Trascina sul video per disegnare la forma","Arraste sobre o vídeo para desenhar a forma","Sleep over de video om de vorm te tekenen","Przeciągnij po wideo, aby narysować kształt","Şekli çizmek için videonun üzerinde sürükleyin","Проведите по видео, чтобы нарисовать фигуру","動画の上をドラッグして図形を描きます","在视频上拖动以绘制形状"}},
  {"speed_boost", {"2× Tempo","2× speed","Velocidad 2×","Vitesse 2×","Velocità 2×","Velocidade 2×","2× snelheid","Tempo 2×","2× hız","Скорость 2×","2倍速","2 倍速"}},
+ {"accent", {"Akzentfarbe","Accent color","Color de acento","Couleur d'accent","Colore di accento","Cor de destaque","Accentkleur","Kolor akcentu","Vurgu rengi","Цвет акцента","アクセントカラー","强调色"}},
+ {"custom_color", {"Eigene…","Custom…","Personalizado…","Personnalisée…","Personalizzato…","Personalizada…","Eigen…","Własny…","Özel…","Свой…","カスタム…","自定义…"}},
+ {"theme_color", {"Wie Design","Theme default","Del tema","Celle du thème","Del tema","Do tema","Van het thema","Z motywu","Temadaki","Как в теме","テーマの色","主题默认"}},
 };
 
 int g_lang = 0;

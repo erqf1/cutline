@@ -17,6 +17,10 @@ struct Theme {
 const QList<Theme>& themes();
 const Theme& currentTheme();
 void setCurrentTheme(const QString& id);
+// Eigene Akzentfarbe (Knöpfe, Fortschritt, Auswahl); leer = Farbe des Designs. Windows XP behält seine Farben.
+void setAccentColor(const QString& color);
+QString accentColor();
+const QList<QColor>& accentChoices();
 QString buildStyleSheet(const Theme& t);
 
 // Feste Farben für Timeline-Elemente (in jedem Theme gut lesbar)

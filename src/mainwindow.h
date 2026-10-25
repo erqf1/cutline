@@ -220,10 +220,15 @@ private:
     double pendingPos_ = 0, pendingRate_ = 1;
     double masterVol_ = 1.0;  // Lautstärke wird pro Abschnitt / Ton-Clip eingestellt
     // Spulen: Player-Sprünge drosseln, bis der Sprung angekommen ist, die alte Position ignorieren
-    QTimer* seekTimer_ = nullptr;
-    QElapsedTimer seekThrottle_, seekClock_;
-    double scrubTarget_ = 0, seekSrc_ = 0;
+    QTimer* seekTimer_ = nullptr;     // Spulen: falls ein angefordertes Bild nicht kommt, trotzdem weiter
+    QElapsedTimer seekThrottle_, seekClock_, scrubFlight_;
+    double scrubTarget_ = 0, seekSrc_ = 0, scrubIssued_ = -1;
     bool seeking_ = false;
+    // Spulen bildgesteuert: das nächste Bild erst anfordern, wenn das vorige da ist - so flüssig, wie der
+    // Decoder kann, ohne dass sich Sprünge stauen
+    bool scrubInFlight_ = false;
+    int posSets_ = 0;                 // zählt echte Sprünge des Players (setPosition / neue Quelle)
+    void pumpScrub();
     std::map<int, AudioPlayer> audioPlayers_;
 
     // Bild

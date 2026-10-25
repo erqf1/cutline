@@ -65,6 +65,7 @@ int main(int argc, char* argv[]) {
 
     QSettings st;
     setCurrentTheme(st.value("theme", "dark").toString());
+    setAccentColor(st.value("accent").toString());
     app.setStyleSheet(buildStyleSheet(currentTheme()));
 
     QString lang = st.value("language").toString();
