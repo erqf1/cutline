@@ -138,6 +138,8 @@ QPushButton#paneHeader { background: transparent; border: none; padding: 2px 0; 
 QDoubleSpinBox, QSpinBox, QComboBox, QLineEdit { background: @panel2@; border: 1px solid @border@;
     border-radius: @r6@px; padding: 5px 8px; selection-background-color: @accent@; selection-color: @acctext@; }
 QComboBox::drop-down { border: none; width: 22px; }
+QPlainTextEdit { background: @panel2@; border: 1px solid @border@; border-radius: @r6@px; padding: 4px 6px;
+    selection-background-color: @accent@; selection-color: @acctext@; }
 QComboBox QAbstractItemView { background: @panel@; border: 1px solid @border@; outline: 0;
     selection-background-color: @accent@; selection-color: @acctext@; }
 QListWidget { background: @panel2@; border: 1px solid @border@; border-radius: @r@px; padding: 4px; outline: 0; }
