@@ -198,6 +198,22 @@ QIcon makeIcon(Ic id, const QColor& c) {
         p.drawLine(24, 46, 48, 46);
         break;
     }
+    case Ic::Pen: {
+        // Stift schräg, darunter eine Schwungline
+        p.drawLine(30, 64, 70, 24);
+        p.drawLine(70, 24, 80, 34);
+        p.drawLine(80, 34, 40, 74);
+        p.drawLine(40, 74, 26, 78);
+        p.drawLine(26, 78, 30, 64);
+        QPainterPath w; w.moveTo(14, 90); w.cubicTo(34, 82, 52, 96, 86, 86);
+        p.drawPath(w);
+        break;
+    }
+    case Ic::Shapes: {
+        p.drawRoundedRect(QRectF(12, 14, 44, 44), 6, 6);
+        p.drawEllipse(QPointF(64, 64), 24, 24);
+        break;
+    }
     case Ic::Volume: {
         fill();
         QPainterPath s; s.moveTo(12, 38); s.lineTo(30, 38); s.lineTo(52, 18); s.lineTo(52, 82); s.lineTo(30, 62); s.lineTo(12, 62);

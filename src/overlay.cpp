@@ -58,6 +58,15 @@ void Overlay::paint(QPainter* p, const QStyleOptionGraphicsItem*, QWidget*) {
         if (key != textKey_) { textImg_ = renderTextImage(*it, px); textKey_ = key; }
         p->setRenderHint(QPainter::SmoothPixmapTransform, true);
         p->drawImage(r, textImg_);
+    } else if (it && it->graphic()) {
+        // Zeichnung / Form wie im Export rendern, nur bei Änderungen neu
+        const QSize px(std::max(2, int(w_)), std::max(2, int(h_)));
+        int pts = 0;
+        for (const QPolygonF& s : it->strokes) pts += s.size();
+        const QString key = QString("g|%1|%2|%3|%4|%5|%6|%7x%8").arg(it->kind).arg(it->shape).arg(it->color).arg(it->stroke)
+                                .arg(it->fill).arg(pts).arg(px.width()).arg(px.height());
+        if (key != textKey_) { textImg_ = renderGraphicImage(*it, px, host_->pr().vh); textKey_ = key; }
+        p->drawImage(r, textImg_);
     } else if (!pm_.isNull()) {
         p->drawPixmap(r, pm_, QRectF(pm_.rect()));
     } else {
@@ -80,6 +89,7 @@ void Overlay::paint(QPainter* p, const QStyleOptionGraphicsItem*, QWidget*) {
 }
 
 void Overlay::mousePressEvent(QGraphicsSceneMouseEvent* e) {
+    if (e->button() != Qt::LeftButton) return e->ignore();
     host_->selectItem(id_);
     mode_ = handleRect().contains(e->pos()) ? Resize : Move;
     startScene_ = e->scenePos();

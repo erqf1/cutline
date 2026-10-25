@@ -80,3 +80,65 @@ QImage renderTextImage(const Item& it, QSize size) {
     p.fillPath(path, QColor::fromRgba(it.color));
     return img;
 }
+
+QImage renderGraphicImage(const Item& it, QSize size, double canvasH) {
+    size = size.expandedTo(QSize(2, 2));
+    QImage img(size, QImage::Format_ARGB32_Premultiplied);
+    img.fill(Qt::transparent);
+    QPainter p(&img);
+    p.setRenderHint(QPainter::Antialiasing);
+    const QColor col = QColor::fromRgba(it.color);
+    const double sw = std::max(1.0, it.stroke * canvasH / 1080.0);
+    QPen pen(col, sw, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin);
+    const double W = size.width(), H = size.height();
+    auto map = [W, H](const QPointF& q) { return QPointF(q.x() * W, q.y() * H); };
+    if (it.kind == Item::Draw) {
+        p.setPen(pen);
+        for (const QPolygonF& s : it.strokes) {
+            if (s.size() == 1) {  // einzelner Klick: Punkt
+                p.setPen(Qt::NoPen);
+                p.setBrush(col);
+                p.drawEllipse(map(s[0]), sw / 2, sw / 2);
+                p.setPen(pen);
+                continue;
+            }
+            QPolygonF poly;
+            for (const QPointF& q : s) poly << map(q);
+            p.drawPolyline(poly);
+        }
+        return img;
+    }
+    const QRectF box = QRectF(0, 0, W, H).adjusted(sw / 2, sw / 2, -sw / 2, -sw / 2);
+    p.setPen(pen);
+    p.setBrush(it.fill ? QBrush(col) : QBrush(Qt::NoBrush));
+    if (it.shape == Item::Rect) {
+        const double r = std::min(box.width(), box.height()) * 0.06;
+        p.drawRoundedRect(box, r, r);
+    } else if (it.shape == Item::Ellipse) {
+        p.drawEllipse(box);
+    } else {
+        // Linie / Pfeil von strokes[0][0] nach strokes[0][1]
+        QPointF a(0, 1), b(1, 0);
+        if (!it.strokes.isEmpty() && it.strokes[0].size() >= 2) { a = it.strokes[0][0]; b = it.strokes[0][1]; }
+        auto inBox = [&box](const QPointF& q) { return QPointF(box.left() + q.x() * box.width(), box.top() + q.y() * box.height()); };
+        QPointF pa = inBox(a), pb = inBox(b);
+        if (it.shape == Item::Arrow) {
+            const QLineF l(pb, pa);
+            const double head = std::min(l.length() * 0.45, sw * 4.5 + 10);
+            QLineF w1 = l, w2 = l;
+            w1.setLength(head); w2.setLength(head);
+            w1.setAngle(l.angle() + 28); w2.setAngle(l.angle() - 28);
+            QPolygonF tip({pb, w1.p2(), w2.p2()});
+            p.drawLine(pa, pb);
+            p.setBrush(col);
+            p.drawPolygon(tip);
+        } else {
+            p.drawLine(pa, pb);
+        }
+    }
+    return img;
+}
+
+QImage renderItemImage(const Item& it, QSize size, double canvasH) {
+    return it.kind == Item::Text ? renderTextImage(it, size) : renderGraphicImage(it, size, canvasH);
+}

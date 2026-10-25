@@ -18,6 +18,8 @@
 #include <QPlainTextEdit>
 #include <QComboBox>
 #include <QCheckBox>
+#include <QGraphicsPathItem>
+#include <QSplitter>
 #include <QTemporaryDir>
 #include <QTimer>
 #include <QVideoFrame>
@@ -81,6 +83,8 @@ public:
     void modelEdited(bool keepTime = false) override;
     void seek(double t) override;
     void scrub(double t) override;
+    void beginScrub() override;
+    void endScrub() override;
     double viewScale() const override { return view_->transform().m11(); }
     int timelineViewportWidth() const override { return tlScroll_->viewport()->width(); }
     const ThumbSet* thumbs(int srcIndex) const override;
@@ -118,11 +122,23 @@ private:
     QWidget* buildInspector();
     void addShortcut(const QString& id, std::function<void()> fn);
     void applyShortcuts();      // Tastenkürzel aus den Einstellungen übernehmen (auch Tooltips)
-    void toggleFsBar();         // Leiste im Vollbild ein-/ausblenden
+    // Abspiel-Leiste über dem Bild (beim Anschauen und im Vollbild): kommt bei Mausbewegung, Pause und Spulen,
+    // verschwindet nach ein paar Sekunden von selbst - auch pausiert. Weiterspielen holt sie nicht zurück.
+    bool overlayMode() const;
+    bool barVisible() const;
+    void showBar();
     void updateFsBar();
-    void wakeFsControls(bool showCursor = true);  // Vollbild: Steuerung nach Mausbewegung wieder zeigen
-    bool fsControlsShown() const;
     bool playingIntent() const;  // spielt (oder soll nach dem Laden weiterspielen)
+    void setBoost(bool on);      // Leertaste gedrückt halten: 2× Tempo (wie bei YouTube)
+    void muteBriefly();          // nach einem Sprung kurz stumm, damit kein alter Ton aus dem Puffer kommt
+    void ensureFonts();          // mitgelieferte Schriften + Schriftliste erst bei Bedarf (schneller Start)
+    void ensureEditData();       // Wellenformen und Vorschaubilder erst fürs Bearbeiten berechnen
+    void setTool(int tool);      // 0 = keins, 1 = Zeichnen, 2 = Form (shapeKind_)
+    void toolPress(const QPointF& p);
+    void toolMove(const QPointF& p);
+    void toolRelease(const QPointF& p);
+    QIcon themedIcon(Ic ic, const QColor& normal, const QColor& checked) const;
+    void fitToolLabels();        // Werkzeug-Knöpfe: Text nur, wenn genug Platz ist (sonst nur Symbol + Tooltip)
     void applyTheme();
     void retranslate();
     void updatePlayIcon();
@@ -217,7 +233,17 @@ private:
     QGraphicsRectItem* canvasBg_;
     QGraphicsVideoItem* vitem_;
     VideoView* view_;
-    QTimer *timer_, *cursorTimer_;
+    QTimer *timer_, *barTimer_, *holdTimer_, *unmuteTimer_;
+    bool barShown_ = true;
+    int playKey_ = 0;                // Abspiel-Taste ohne Umschalt/Strg (Standard Leertaste): Halten = 2×
+    bool playKeyDown_ = false, boosted_ = false;
+    double boost_ = 1.0;
+    bool scrubbing_ = false, scrubResume_ = false;
+    bool silent_ = false;            // Entwickler-Tests: nie Ton
+    bool fontsReady_ = false, editData_ = false;
+    QStringList pendingBinThumbs_;   // Vorschaubilder im Medien-Panel erst beim Bearbeiten holen
+    QLabel* boostLbl_ = nullptr;
+    bool firstFrame_ = false;
     QVideoFrame frame_;
     QImage frameImg_;
     bool frameImgValid_ = false;
@@ -231,17 +257,26 @@ private:
     std::vector<BtnSpec> btns_;
     QPushButton *btnPlay_, *btnEdit_, *fsBtn_ = nullptr;
     std::map<QString, QAction*> scActions_;  // Tastenkürzel nach Kennung (shortcuts.h)
-    // Vollbild: kleine Leiste über dem Bild (Pause, Fortschritt, Zeit, Ausblenden)
-    QWidget* seekGap_ = nullptr;  // Platzhalter für die Fortschrittsleiste im Bearbeiten-Modus
+    // Leiste über dem Bild (wie bei YouTube): Fortschritt oben, darunter Pause, Zeit, Bearbeiten, Einstellungen, Vollbild
+    QWidget* seekGap_ = nullptr;  // Platzhalter in der Bearbeiten-Leiste (dort spult man über die Zeitleiste)
     QFrame* fsBar_ = nullptr;
-    QPushButton *fsPlay_ = nullptr, *fsHide_ = nullptr;
-    QLabel *fsHideIcon_ = nullptr, *fsHideText_ = nullptr, *fsHideKey_ = nullptr;  // Inhalt des Ausblende-Knopfs
-    QSlider* fsSlider_ = nullptr;
+    QPushButton *fsPlay_ = nullptr, *pbEdit_ = nullptr, *pbSettings_ = nullptr, *pbFs_ = nullptr;
     QLabel* fsTime_ = nullptr;
-    bool fsBarVisible_ = true;  // Leiste beim Abspielen zeigen (pausiert ist sie immer da); jedes neue Video: wieder an
     int hintGen_ = 0;           // zählt Hinweise im Bild, damit ein alter Ausblende-Timer keinen neuen Hinweis versteckt
-    bool fsIdle_ = false;       // beim Abspielen eine Weile keine Maus bewegt -> Steuerung ausgeblendet
     Osd* osd_ = nullptr;  // Symbol in der Bildmitte bei Pause/Abspielen/Spulen (wie bei YouTube)
+    // Bereiche wie bei CapCut verstellbar: Medien | Video | Eigenschaften, darunter die Zeitleiste
+    QSplitter *hSplit_ = nullptr, *vSplit_ = nullptr;
+    QWidget* editBottom_ = nullptr;
+    // Zeichnen und Formen
+    QPushButton *btnDraw_ = nullptr, *btnShape_ = nullptr;
+    int tool_ = 0, shapeKind_ = 0, drawItem_ = 0;
+    unsigned graphicColor_ = 0xffff3b30u;  // Farbe für neue Zeichnungen und Formen
+    QGraphicsPathItem* toolPreview_ = nullptr;
+    QPolygonF toolPts_;
+    QWidget* shapeBox_ = nullptr;
+    QPushButton* btnShapeColor_ = nullptr;
+    QCheckBox* chkFill_ = nullptr;
+    QLabel* lblShapeColor_ = nullptr;
     QPushButton *tabMedia_, *tabProps_;
     QListWidget* bin_;
     QLabel* lblBinHint_;

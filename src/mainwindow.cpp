@@ -29,6 +29,11 @@
 #include <QUrl>
 #include <QVBoxLayout>
 #include <QVideoSink>
+#include <QMenu>
+#include <QKeyEvent>
+#include <QLineEdit>
+#include <QTextEdit>
+#include <QAbstractSpinBox>
 #include "dialogs.h"
 #include "shortcuts.h"
 #include "i18n.h"
@@ -36,6 +41,39 @@
 #include "theme.h"
 
 static constexpr double kMinPiece = 0.1;
+
+// Startzeit messen (CUTLINE_TRACE=<Datei>): wann Fenster und erstes Bild da sind
+QElapsedTimer g_startup;
+static void trace(const QString& what) {
+    const QString file = qEnvironmentVariable("CUTLINE_TRACE");
+    if (file.isEmpty()) return;
+    QFile f(file);
+    if (f.open(QIODevice::Append | QIODevice::Text))
+        f.write(QString("%1 ms  %2\n").arg(g_startup.isValid() ? g_startup.elapsed() : -1).arg(what).toUtf8());
+}
+void cutlineTrace(const char* what) { trace(QString::fromUtf8(what)); }
+
+enum class MediaKind { Video, Audio, Image };
+
+static MediaKind mediaKindOf(const QString& path) {
+    const QString e = QFileInfo(path).suffix().toLower();
+    static const QStringList img = {"png", "jpg", "jpeg", "webp", "bmp", "gif"};
+    static const QStringList aud = {"mp3", "wav", "m4a", "aac", "flac", "ogg", "opus", "wma", "aiff", "aif", "alac", "amr"};
+    if (img.contains(e)) return MediaKind::Image;
+    if (aud.contains(e)) return MediaKind::Audio;
+    return MediaKind::Video;
+}
+
+// Tippt man gerade in ein Feld? Dann gehört die Leertaste dem Feld, nicht dem Player.
+static bool typingFocus() {
+    QWidget* f = QApplication::focusWidget();
+    if (!f) return false;
+    if (qobject_cast<QLineEdit*>(f) || qobject_cast<QPlainTextEdit*>(f) || qobject_cast<QTextEdit*>(f) ||
+        qobject_cast<QAbstractSpinBox*>(f))
+        return true;
+    auto* cb = qobject_cast<QComboBox*>(f);
+    return cb && cb->isEditable();
+}
 
 // Tempo-Stufen: unter 1× in 0,05er-Schritten, darüber immer größer
 static const std::vector<double>& speedSteps() {
@@ -67,10 +105,12 @@ MainWindow::MainWindow() {
     setMinimumSize(900, 600);
     setAcceptDrops(true);
     ambientClock_.start();
+    silent_ = qEnvironmentVariableIsSet("CUTLINE_MUTE");
     buildUi();
     applyTheme();
     retranslate();
     setEditMode(false);
+    qApp->installEventFilter(this);  // Leertaste halten = 2× (braucht Drücken und Loslassen einzeln)
 
     // Updates: kurz nach dem Start still prüfen, fragt nur bei einer neuen (nicht ignorierten) Version
     Updater::Options uo;
@@ -402,12 +442,8 @@ QWidget* MainWindow::buildInspector() {
     tv->addWidget(textEdit_);
     lblFont_ = new QLabel;
     tv->addWidget(lblFont_);
-    fontBox_ = new QComboBox;
+    fontBox_ = new QComboBox;  // Inhalt erst beim ersten Text (ensureFonts) - alle Schriften aufzählen dauert
     fontBox_->setMaxVisibleItems(16);
-    for (const QString& f : specialFonts()) fontBox_->addItem("★ " + f, f);
-    fontBox_->insertSeparator(fontBox_->count());
-    for (const QString& f : QFontDatabase::families())
-        if (!specialFonts().contains(f) && !f.startsWith('@')) fontBox_->addItem(f, f);
     connect(fontBox_, &QComboBox::activated, this, [this] {
         Item* it = pr_.item(selItem_);
         if (!it || it->kind != Item::Text) return;
@@ -440,6 +476,31 @@ QWidget* MainWindow::buildInspector() {
     crow->addStretch();
     tv->addLayout(crow);
     v->addWidget(textBox_);
+
+    // Zeichnung / Form: Farbe und (bei Rechteck und Kreis) Füllen
+    shapeBox_ = new QWidget;
+    auto* sb = new QHBoxLayout(shapeBox_);
+    sb->setContentsMargins(0, 0, 0, 0);
+    lblShapeColor_ = new QLabel;
+    btnShapeColor_ = new QPushButton;
+    btnShapeColor_->setFixedSize(34, 26);
+    btnShapeColor_->setFocusPolicy(Qt::NoFocus);
+    connect(btnShapeColor_, &QPushButton::clicked, this, [this] { pickItemColor(false); });
+    chkFill_ = new QCheckBox;
+    chkFill_->setFocusPolicy(Qt::NoFocus);
+    connect(chkFill_, &QCheckBox::toggled, this, [this](bool on) {
+        Item* it = pr_.item(selItem_);
+        if (!it || it->kind != Item::Shape || it->fill == on) return;
+        pushUndo();
+        it->fill = on;
+        for (Overlay* ov : overlays_) ov->update();
+    });
+    sb->addWidget(lblShapeColor_);
+    sb->addWidget(btnShapeColor_);
+    sb->addSpacing(10);
+    sb->addWidget(chkFill_);
+    sb->addStretch();
+    v->addWidget(shapeBox_);
     btnDelEl_ = mk("delete_el", nullptr, Ic::Trash);
     connect(btnDelEl_, &QPushButton::clicked, this, &MainWindow::deleteSelected);
     v->addWidget(btnDelEl_);
@@ -450,7 +511,7 @@ QWidget* MainWindow::buildInspector() {
     auto card = [](int width) {
         auto* c = new QFrame;
         c->setObjectName("card");
-        c->setFixedWidth(width);
+        c->setMinimumWidth(width);  // Breite per Trenner verstellbar (wie bei CapCut)
         auto* l = new QVBoxLayout(c);
         l->setContentsMargins(12, 12, 12, 12);
         l->setSpacing(10);
@@ -465,12 +526,12 @@ QWidget* MainWindow::buildInspector() {
         b->setObjectName("paneHeader");  // Aussehen im Theme (bei XP: Kopf eines Aufgabenbereichs)
         return b;
     };
-    mediaCard_ = card(260);
+    mediaCard_ = card(190);
     tabMedia_ = header("media", Ic::AddVideo);
     mediaCard_->layout()->addWidget(tabMedia_);
     mediaCard_->layout()->addWidget(buildMediaPage());
 
-    inspCard_ = card(300);
+    inspCard_ = card(230);
     auto* cl = static_cast<QVBoxLayout*>(inspCard_->layout());
     tabProps_ = header("properties", Ic::Edit);
     cl->addWidget(tabProps_);
@@ -492,6 +553,7 @@ void MainWindow::buildUi() {
     player_ = new QMediaPlayer(this);
     audio_ = new QAudioOutput(this);
     audio_->setVolume(float(masterVol_));
+    audio_->setMuted(silent_);
     player_->setAudioOutput(audio_);
     scene_ = new QGraphicsScene(this);
     canvasBg_ = scene_->addRect(0, 0, 1920, 1080, Qt::NoPen, Qt::NoBrush);  // schwarz erst mit geladenem Video
@@ -506,28 +568,44 @@ void MainWindow::buildUi() {
     connect(player_, &QMediaPlayer::playbackStateChanged, this, &MainWindow::onState);
     connect(player_, &QMediaPlayer::mediaStatusChanged, this, &MainWindow::onStatus);
     connect(view_, &VideoView::emptyClicked, this, [this] { pr_.pieces.isEmpty() ? openDialog() : togglePlay(); });
+    connect(view_, &VideoView::toolPressed, this, &MainWindow::toolPress);
+    connect(view_, &VideoView::toolMoved, this, &MainWindow::toolMove);
+    connect(view_, &VideoView::toolReleased, this, &MainWindow::toolRelease);
     timer_ = new QTimer(this);
     timer_->setInterval(15);
     connect(timer_, &QTimer::timeout, this, &MainWindow::tick);
-    // Vollbild beim Abspielen: ohne Mausbewegung verschwinden Leiste, Knöpfe und Mauszeiger nach kurzer Zeit.
-    // Pausiert bleibt die Steuerung immer stehen.
-    cursorTimer_ = new QTimer(this);
-    cursorTimer_->setSingleShot(true);
-    cursorTimer_->setInterval(2500);
-    connect(cursorTimer_, &QTimer::timeout, this, [this] {
-        if (!fullscreen_ || !playingIntent()) return;
-        const QPoint m = view_->mapFromGlobal(QCursor::pos());
-        const bool onControls = (fsBar_->isVisible() && fsBar_->geometry().contains(m)) ||
-                                (fsBtn_->isVisible() && fsBtn_->geometry().contains(m)) || fsSlider_->isSliderDown();
-        if (onControls) {  // Maus liegt auf der Leiste: stehen lassen
-            cursorTimer_->start();
+    // Leiste über dem Bild: verschwindet nach ein paar Sekunden ohne Mausbewegung (auch pausiert),
+    // außer die Maus liegt gerade auf ihr. Beim Abspielen (und im Vollbild) geht auch der Mauszeiger weg.
+    barTimer_ = new QTimer(this);
+    barTimer_->setSingleShot(true);
+    barTimer_->setInterval(2600);
+    connect(barTimer_, &QTimer::timeout, this, [this] {
+        if (!overlayMode() || pr_.pieces.isEmpty()) return;
+        const bool onBar = fsBar_->isVisible() && fsBar_->rect().contains(fsBar_->mapFromGlobal(QCursor::pos()));
+        if (onBar || slider_->isSliderDown() || scrubbing_) {
+            barTimer_->start();
             return;
         }
-        fsIdle_ = true;
-        view_->viewport()->setCursor(Qt::BlankCursor);
+        barShown_ = false;
+        const QPoint m = view_->viewport()->mapFromGlobal(QCursor::pos());
+        if (view_->viewport()->rect().contains(m) && (fullscreen_ || playingIntent()))
+            view_->viewport()->setCursor(Qt::BlankCursor);
         placeVideoControls();
     });
-    connect(view_, &VideoView::mouseActivity, this, [this] { wakeFsControls(); });
+    connect(view_, &VideoView::mouseActivity, this, [this] { showBar(); });
+    // Leertaste: kurz = Pause/Abspielen, gedrückt halten = 2× Tempo bis zum Loslassen
+    holdTimer_ = new QTimer(this);
+    holdTimer_->setSingleShot(true);
+    holdTimer_->setInterval(320);
+    connect(holdTimer_, &QTimer::timeout, this, [this] {
+        if (playKeyDown_ && playingIntent()) setBoost(true);
+    });
+    unmuteTimer_ = new QTimer(this);
+    unmuteTimer_->setSingleShot(true);
+    unmuteTimer_->setInterval(220);
+    connect(unmuteTimer_, &QTimer::timeout, this, [this] {
+        if (!scrubbing_ && !silent_) audio_->setMuted(false);
+    });
 
     // Obere Leiste
     topbar_ = new QWidget;
@@ -543,7 +621,7 @@ void MainWindow::buildUi() {
     top->addStretch();
     top->addWidget(bExp);
 
-    // Transportleiste
+    // Transportleiste (nur beim Bearbeiten - beim Anschauen liegt die Leiste über dem Bild)
     transport_ = new QWidget;
     transport_->setObjectName("transport");
     transport_->setAttribute(Qt::WA_StyledBackground);  // damit Themes (XP: Taskleiste) einen Hintergrund setzen können
@@ -552,23 +630,6 @@ void MainWindow::buildUi() {
     bar->setSpacing(12);
     btnPlay_ = mk(nullptr, "play_tip", Ic::Play, "play", "@play");
     connect(btnPlay_, &QPushButton::clicked, this, &MainWindow::togglePlay);
-    slider_ = new SeekSlider;
-    slider_->setRange(0, 10000);
-    slider_->setFocusPolicy(Qt::NoFocus);
-    // Ziehen: nur Vorschaubild + Zeit wandern mit, das Video springt erst beim Loslassen.
-    // Ein Klick auf die Leiste (ohne Ziehen) springt sofort.
-    connect(slider_, &QSlider::sliderMoved, this, [this](int v) {
-        if (!slider_->isSliderDown()) return seek(v / 10000.0 * pr_.total());
-        showScrubPreview(v);
-        updateUi();
-    });
-    connect(slider_, &QSlider::sliderReleased, this, [this] {
-        scrubPrev_->hide();
-        // Nur springen, wenn noch ein gedrosselter Sprung aussteht oder sich die Stelle geändert hat -
-        // ein zweiter Sprung an dieselbe Stelle spielte den Ton dort ein zweites Mal ab
-        const double t = slider_->value() / 10000.0 * pr_.total();
-        if (seekTimer_->isActive() || std::abs(t - lastSeekT_) > 0.01) seek(t);
-    });
     seekTimer_ = new QTimer(this);
     seekTimer_->setSingleShot(true);
     connect(seekTimer_, &QTimer::timeout, this, [this] {
@@ -582,9 +643,7 @@ void MainWindow::buildUi() {
     auto* bSet = mk(nullptr, "settings", Ic::Settings);
     connect(bSet, &QPushButton::clicked, this, &MainWindow::openSettings);
     bar->addWidget(btnPlay_);
-    bar->addWidget(slider_, 1);
-    seekGap_ = new QWidget;  // beim Bearbeiten statt der Leiste: dort spult man über die Zeitleiste
-    seekGap_->hide();
+    seekGap_ = new QWidget;
     bar->addWidget(seekGap_, 1);
     bar->addWidget(lblTime_);
     bar->addWidget(btnEdit_);
@@ -595,16 +654,37 @@ void MainWindow::buildUi() {
     auto* tl = new QHBoxLayout(tools_);
     tl->setContentsMargins(0, 0, 0, 0);
     tl->setSpacing(8);
-    struct T { const char* text; const char* tip; Ic ic; const char* suffix; void (MainWindow::*fn)(); };
-    const T list[] = {
+    struct ToolDef { const char* text; const char* tip; Ic ic; const char* suffix; void (MainWindow::*fn)(); };
+    const ToolDef list[] = {
         {"split", nullptr, Ic::Scissors, "@split", &MainWindow::doSplit},
         {"remove_piece", nullptr, Ic::Trash, "@delete", &MainWindow::doDelete},
         {"blur", nullptr, Ic::Blur, "@blur", &MainWindow::addBlur},
         {"text", nullptr, Ic::Text, "@text", &MainWindow::addText},
-        {nullptr, "undo", Ic::Undo, "@undo", &MainWindow::doUndo},
-        {nullptr, "redo", Ic::Redo, "@redo", &MainWindow::doRedo},
     };
-    for (const T& t : list) {
+    for (const ToolDef& t : list) {
+        auto* b = mk(t.text, t.tip, t.ic, "tool", t.suffix);
+        connect(b, &QPushButton::clicked, this, [this, fn = t.fn] { (this->*fn)(); });
+        tl->addWidget(b);
+    }
+    // Zeichnen (an/aus) und Formen (Menü: Rechteck, Kreis, Pfeil, Linie)
+    btnDraw_ = mk("draw", nullptr, Ic::Pen, "tool", "@draw");
+    btnDraw_->setCheckable(true);
+    connect(btnDraw_, &QPushButton::clicked, this, [this] { setTool(tool_ == 1 ? 0 : 1); });
+    tl->addWidget(btnDraw_);
+    btnShape_ = mk("shape", nullptr, Ic::Shapes, "tool", "@shape");
+    btnShape_->setCheckable(true);
+    auto* shapeMenu = new QMenu(btnShape_);
+    connect(shapeMenu, &QMenu::aboutToShow, this, [this, shapeMenu] {
+        shapeMenu->clear();
+        const char* keys[] = {"shape_rect", "shape_ellipse", "shape_arrow", "shape_line"};
+        for (int k = 0; k < 4; ++k)
+            shapeMenu->addAction(T(keys[k]), this, [this, k] { shapeKind_ = k; setTool(2); });
+    });
+    connect(shapeMenu, &QMenu::aboutToHide, this, [this] { btnShape_->setChecked(tool_ == 2); });
+    btnShape_->setMenu(shapeMenu);
+    tl->addWidget(btnShape_);
+    for (const ToolDef& t : {ToolDef{nullptr, "undo", Ic::Undo, "@undo", &MainWindow::doUndo},
+                       ToolDef{nullptr, "redo", Ic::Redo, "@redo", &MainWindow::doRedo}}) {
         auto* b = mk(t.text, t.tip, t.ic, "tool", t.suffix);
         connect(b, &QPushButton::clicked, this, [this, fn = t.fn] { (this->*fn)(); });
         tl->addWidget(b);
@@ -631,99 +711,133 @@ void MainWindow::buildUi() {
     tlScroll_ = new QScrollArea;
     tlScroll_->setWidget(timeline_);
     tlScroll_->setWidgetResizable(false);
-    tlScroll_->setFixedHeight(210);
+    tlScroll_->setMinimumHeight(130);
     tlScroll_->viewport()->installEventFilter(this);
 
-    auto* mid = new QHBoxLayout;
-    mid->setSpacing(12);
+    // Bereiche mit Trennern: Medien | Video | Eigenschaften, darunter Abspielen + Werkzeuge + Zeitleiste.
+    // Alles per Ziehen größer und kleiner (Größen werden gemerkt).
     QWidget* inspector = buildInspector();
-    mid->addWidget(mediaCard_);
-    mid->addWidget(view_, 1);
-    mid->addWidget(inspector);
+    hSplit_ = new QSplitter(Qt::Horizontal);
+    hSplit_->setChildrenCollapsible(false);
+    hSplit_->setHandleWidth(10);
+    hSplit_->addWidget(mediaCard_);
+    hSplit_->addWidget(view_);
+    hSplit_->addWidget(inspector);
+    hSplit_->setStretchFactor(0, 0);
+    hSplit_->setStretchFactor(1, 1);
+    hSplit_->setStretchFactor(2, 0);
+    hSplit_->setSizes({250, 760, 290});
+    editBottom_ = new QWidget;
+    auto* eb = new QVBoxLayout(editBottom_);
+    eb->setContentsMargins(0, 0, 0, 0);
+    eb->setSpacing(10);
+    eb->addWidget(transport_);
+    eb->addWidget(tools_);
+    eb->addWidget(tlScroll_, 1);
+    vSplit_ = new QSplitter(Qt::Vertical);
+    vSplit_->setChildrenCollapsible(false);
+    vSplit_->setHandleWidth(10);
+    vSplit_->addWidget(hSplit_);
+    vSplit_->addWidget(editBottom_);
+    vSplit_->setStretchFactor(0, 1);
+    vSplit_->setStretchFactor(1, 0);
+    vSplit_->setSizes({520, 300});
+    {
+        QSettings st;
+        hSplit_->restoreState(st.value("layout/h").toByteArray());
+        vSplit_->restoreState(st.value("layout/v").toByteArray());
+    }
+    for (QSplitter* sp : {hSplit_, vSplit_})
+        connect(sp, &QSplitter::splitterMoved, this, [this] {
+            QSettings st;
+            st.setValue("layout/h", hSplit_->saveState());
+            st.setValue("layout/v", vSplit_->saveState());
+            fitView();
+        });
     auto* root = new QWidget;
     root->setObjectName("root");
     rootLayout_ = new QVBoxLayout(root);
     rootLayout_->setContentsMargins(14, 12, 14, 14);
     rootLayout_->setSpacing(10);
     rootLayout_->addWidget(topbar_);
-    rootLayout_->addLayout(mid, 1);
-    rootLayout_->addWidget(transport_);
-    rootLayout_->addWidget(tools_);
-    rootLayout_->addWidget(tlScroll_);
+    rootLayout_->addWidget(vSplit_, 1);
     setCentralWidget(root);
 
-    // Vollbild-Knopf direkt im Video (unten rechts)
+    // Vollbild-Knopf direkt im Video (unten rechts) - nur beim Bearbeiten, sonst ist er in der Leiste
     fsBtn_ = new QPushButton(view_);
     fsBtn_->setObjectName("vidbtn");
     fsBtn_->setFocusPolicy(Qt::NoFocus);
     fsBtn_->setCursor(Qt::PointingHandCursor);
     fsBtn_->setFixedSize(40, 40);
     fsBtn_->setIconSize(QSize(18, 18));
-    fsBtn_->setStyleSheet("QPushButton#vidbtn { background: rgba(0,0,0,0.45); border: 1px solid rgba(255,255,255,0.25); border-radius: 10px; }"
+    fsBtn_->setStyleSheet("QPushButton#vidbtn { background: rgba(0,0,0,0.45); border: none; border-radius: 20px; }"
                           "QPushButton#vidbtn:hover { background: rgba(0,0,0,0.7); }");
     connect(fsBtn_, &QPushButton::clicked, this, &MainWindow::toggleFullscreen);
 
-    // Vollbild: schmale Leiste über dem Bild - Pause, Fortschritt, Zeit und ein deutlicher Ausblende-Knopf
-    const QString vidBtn = "QPushButton { background: transparent; border: none; border-radius: 7px; color: #ffffff; padding: 0 6px; }"
-                           "QPushButton:hover { background: rgba(255,255,255,0.14); }";
+    // Leiste über dem Bild wie bei YouTube: dunkler Verlauf, oben der rote Fortschritt, darunter die Knöpfe
     fsBar_ = new QFrame(view_);
     fsBar_->setObjectName("fsbar");
-    fsBar_->setStyleSheet("QFrame#fsbar { background: rgba(12,13,18,0.72); border: 1px solid rgba(255,255,255,0.14); border-radius: 10px; }"
-                          "QLabel { color: #ffffff; background: transparent; font-size: 12px; }"
-                          "QSlider::groove:horizontal { height: 4px; background: rgba(255,255,255,0.25); border-radius: 2px; }"
-                          "QSlider::sub-page:horizontal { background: #ffffff; border-radius: 2px; }"
-                          "QSlider::handle:horizontal { width: 12px; height: 12px; margin: -4px 0; border-radius: 6px; background: #ffffff; }");
-    fsBar_->setFixedHeight(36);
-    auto* fb = new QHBoxLayout(fsBar_);
-    fb->setContentsMargins(6, 2, 6, 2);
-    fb->setSpacing(8);
+    fsBar_->setFixedHeight(74);
+    auto* fv = new QVBoxLayout(fsBar_);
+    fv->setContentsMargins(12, 18, 12, 6);
+    fv->setSpacing(2);
+    auto* seekBar = new SeekSlider;
+    slider_ = seekBar;
+    slider_->setRange(0, 10000);
+    slider_->setFocusPolicy(Qt::NoFocus);
+    slider_->setCursor(Qt::PointingHandCursor);
+    fv->addWidget(slider_);
+    auto* fb = new QHBoxLayout;
+    fb->setSpacing(4);
+    fv->addLayout(fb);
     fsPlay_ = new QPushButton;
-    fsHide_ = new QPushButton;
-    fsPlay_->setFixedSize(28, 28);
-    fsHide_->setFixedHeight(28);  // mit Text, damit man den Knopf sofort erkennt
-    for (QPushButton* b : {fsPlay_, fsHide_}) {
-        b->setIconSize(QSize(16, 16));
+    pbEdit_ = new QPushButton;
+    pbSettings_ = new QPushButton;
+    pbFs_ = new QPushButton;
+    for (QPushButton* b : {fsPlay_, pbEdit_, pbSettings_, pbFs_}) {
+        b->setFixedHeight(36);
+        b->setIconSize(QSize(20, 20));
         b->setFocusPolicy(Qt::NoFocus);
         b->setCursor(Qt::PointingHandCursor);
-        b->setStyleSheet(vidBtn);
+        b->setObjectName("barbtn");
     }
-    // Ausblende-Knopf: Pfeil, Text und die Taste als Tastenkappe, damit man sieht, dass es ein Hotkey ist
-    auto* hl = new QHBoxLayout(fsHide_);
-    hl->setContentsMargins(6, 0, 6, 0);
-    hl->setSpacing(6);
-    fsHideIcon_ = new QLabel;
-    fsHideText_ = new QLabel;
-    fsHideKey_ = new QLabel;
-    fsHideKey_->setStyleSheet("QLabel { color: #ffffff; background: rgba(255,255,255,0.18); border: 1px solid rgba(255,255,255,0.6);"
-                              " border-bottom-width: 2px; border-radius: 4px; padding: 0 6px; font-size: 12px; font-weight: 700; }");
-    for (QLabel* l : {fsHideIcon_, fsHideText_, fsHideKey_}) {
-        l->setAttribute(Qt::WA_TransparentForMouseEvents);
-        hl->addWidget(l);
-    }
-    auto* fsSeek = new SeekSlider;
-    fsSlider_ = fsSeek;
-    fsSlider_->setRange(0, 10000);
-    fsSlider_->setFocusPolicy(Qt::NoFocus);
+    for (QPushButton* b : {fsPlay_, pbSettings_, pbFs_}) b->setFixedWidth(40);
     fsTime_ = new QLabel;
+    fsTime_->setObjectName("bartime");
     fb->addWidget(fsPlay_);
-    fb->addWidget(fsSlider_, 1);
+    fb->addSpacing(6);
     fb->addWidget(fsTime_);
-    fb->addWidget(fsHide_);
+    fb->addStretch();
+    fb->addWidget(pbEdit_);
+    fb->addWidget(pbSettings_);
+    fb->addWidget(pbFs_);
     connect(fsPlay_, &QPushButton::clicked, this, &MainWindow::togglePlay);
-    connect(fsHide_, &QPushButton::clicked, this, &MainWindow::toggleFsBar);
-    connect(fsSlider_, &QSlider::sliderMoved, this, [this](int v) {
-        if (!fsSlider_->isSliderDown()) return seek(v / 10000.0 * pr_.total());
-        updateUi();  // nur die Zeit, das Video springt erst beim Loslassen
+    connect(pbEdit_, &QPushButton::clicked, this, [this] { btnEdit_->setChecked(true); });
+    connect(pbSettings_, &QPushButton::clicked, this, &MainWindow::openSettings);
+    connect(pbFs_, &QPushButton::clicked, this, &MainWindow::toggleFullscreen);
+    // Ziehen am Fortschritt: Video pausiert und stumm, Vorschaubild + Zeit wandern mit, das Video springt beim
+    // Loslassen und spielt dann weiter. Ein Klick (ohne Ziehen) springt sofort.
+    connect(slider_, &QSlider::sliderPressed, this, [this] { beginScrub(); });
+    connect(slider_, &QSlider::sliderMoved, this, [this](int v) {
+        if (!slider_->isSliderDown()) return seek(v / 10000.0 * pr_.total());
+        showScrubPreview(v);
+        updateUi();
     });
-    connect(fsSlider_, &QSlider::sliderReleased, this, [this] {
-        const double t = fsSlider_->value() / 10000.0 * pr_.total();
-        if (seekTimer_->isActive() || std::abs(t - lastSeekT_) > 0.01) seek(t);
+    connect(slider_, &QSlider::sliderReleased, this, [this] {
+        scrubPrev_->hide();
+        seek(slider_->value() / 10000.0 * pr_.total());
+        endScrub();
+        showBar();
     });
-    fsBar_->hide();
     fsHint_ = new QLabel(view_);
     fsHint_->setAlignment(Qt::AlignCenter);
     fsHint_->setStyleSheet("color:#ffffff;background:rgba(0,0,0,0.65);border-radius:12px;padding:10px 18px;font-size:15px;font-weight:600;");
     fsHint_->hide();
+    // "2×" oben im Bild, solange die Leertaste gehalten wird
+    boostLbl_ = new QLabel(view_);
+    boostLbl_->setAttribute(Qt::WA_TransparentForMouseEvents);
+    boostLbl_->setStyleSheet("color:#ffffff;background:rgba(0,0,0,0.6);border-radius:16px;padding:6px 16px;font-size:14px;font-weight:700;");
+    boostLbl_->hide();
     view_->installEventFilter(this);
 
     scrubPrev_ = new QLabel(this);
@@ -739,8 +853,10 @@ void MainWindow::buildUi() {
     addShortcut("export", [this] { exportVideo(); });
     addShortcut("edit", [this] { btnEdit_->toggle(); });
     addShortcut("fullscreen", [this] { toggleFullscreen(); });
-    addShortcut("exitfs", [this] { if (fullscreen_) exitFullscreen(); });
-    addShortcut("bar", [this] { toggleFsBar(); });
+    addShortcut("exitfs", [this] {
+        if (tool_) setTool(0);
+        else if (fullscreen_) exitFullscreen();
+    });
     addShortcut("split", [this] { doSplit(); });
     addShortcut("delete", [this] { doDelete(); });
     addShortcut("trim_start", [this] { doTrimStart(); });
@@ -748,6 +864,8 @@ void MainWindow::buildUi() {
     addShortcut("blur", [this] { addBlur(); });
     addShortcut("image", [this] { addImage(); });
     addShortcut("text", [this] { addText(); });
+    addShortcut("draw", [this] { setTool(tool_ == 1 ? 0 : 1); });
+    addShortcut("shape", [this] { setTool(tool_ == 2 ? 0 : 2); });
     addShortcut("zoom_in", [this] { timeline_->zoomBy(1.6); });
     addShortcut("zoom_out", [this] { timeline_->zoomBy(1 / 1.6); });
     addShortcut("undo", [this] { doUndo(); });
@@ -755,12 +873,12 @@ void MainWindow::buildUi() {
     addShortcut("back", [this] {
         seek(t_ - 5.0);
         if (osd_ && !pr_.pieces.isEmpty()) osd_->flash(Osd::Back);
-        wakeFsControls(false);  // wie bei YouTube: beim Spulen kurz zeigen, wo man ist
+        showBar();  // wie bei YouTube: beim Spulen kurz zeigen, wo man ist
     });
     addShortcut("fwd", [this] {
         seek(t_ + 5.0);
         if (osd_ && !pr_.pieces.isEmpty()) osd_->flash(Osd::Forward);
-        wakeFsControls(false);
+        showBar();
     });
     osd_ = new Osd(view_);
     applyShortcuts();
@@ -774,10 +892,14 @@ void MainWindow::addShortcut(const QString& id, std::function<void()> fn) {
 }
 
 void MainWindow::applyShortcuts() {
+    // Abspiel-Taste ohne Umschalt/Strg (Standard: Leertaste) behandeln wir selbst: kurz = Pause, halten = 2×
+    const QKeySequence pk = shortcutFor("play");
+    playKey_ = 0;
+    if (pk.count() == 1 && pk[0].keyboardModifiers() == Qt::NoModifier) playKey_ = pk[0].key();
     for (auto& [id, a] : scActions_) {
         QList<QKeySequence> keys;
         const QKeySequence k = shortcutFor(id);
-        if (!k.isEmpty()) keys << k;
+        if (!k.isEmpty() && !(id == "play" && playKey_)) keys << k;
         // Gewohnte Zweitbelegungen, solange die Standardtaste aktiv ist
         if (k == defaultShortcut(id)) {
             if (id == "zoom_in") keys << QKeySequence("Ctrl+=");
@@ -788,20 +910,46 @@ void MainWindow::applyShortcuts() {
     retranslate();  // Tooltips zeigen die aktuelle Taste
 }
 
+QIcon MainWindow::themedIcon(Ic ic, const QColor& normal, const QColor& checked) const {
+    QIcon i = makeIcon(ic, normal);
+    i.addPixmap(makeIcon(ic, checked).pixmap(96, 96), QIcon::Normal, QIcon::On);
+    return i;
+}
+
 void MainWindow::applyTheme() {
     const Theme& th = currentTheme();
     qApp->setStyleSheet(buildStyleSheet(th));
+    // ausgewählte Knöpfe: YouTube-Stil = helle Fläche (Symbol in Hintergrundfarbe), sonst Akzentfläche
+    const QColor onColor = th.yt ? th.bg : th.accentText;
     for (const BtnSpec& s : btns_) {
         if (s.b == btnPlay_) continue;
         s.b->setProperty("dummy", 0);
         const bool onBar = th.xp && topbar_->isAncestorOf(s.b);  // XP-Taskleiste: weiße Symbole
-        static_cast<QPushButton*>(s.b)->setIcon(makeIcon(s.icon, s.onAccent || onBar ? th.accentText : th.text));
+        const QColor c = s.onAccent || onBar ? th.accentText : th.text;
+        static_cast<QPushButton*>(s.b)->setIcon(s.b->isCheckable() ? themedIcon(s.icon, c, onColor) : makeIcon(s.icon, c));
     }
     lblHint_->setStyleSheet(th.xp ? QString("color:#FFFFFF;font-size:17px;font-weight:bold;background:transparent")
                                   : QString("color:%1;font-size:17px;background:transparent").arg(th.muted.name()));
     // XP: Taskleiste mit Innenabstand, sonst bündig
     if (auto* l = topbar_->layout()) l->setContentsMargins(th.xp ? QMargins(6, 4, 6, 4) : QMargins(0, 0, 0, 0));
+    // Leiste über dem Bild: immer dunkel (liegt auf dem Video), Fortschritt in der Akzentfarbe
+    const QString acc = th.xp ? QString("#3C9B3C") : th.accent.name();
+    fsBar_->setStyleSheet(QString(
+        "QFrame#fsbar { border: none; border-radius: 0; background: qlineargradient(x1:0,y1:0,x2:0,y2:1,"
+        " stop:0 rgba(0,0,0,0), stop:0.35 rgba(0,0,0,0.45), stop:1 rgba(0,0,0,0.82)); }"
+        "QLabel#bartime { color: #ffffff; background: transparent; font-size: 13px; font-weight: 500; }"
+        "QPushButton#barbtn { background: transparent; border: none; border-radius: 18px; color: #ffffff; padding: 0 10px;"
+        " font-weight: 600; }"
+        "QPushButton#barbtn:hover { background: rgba(255,255,255,0.16); }"
+        "QSlider { height: 16px; }"
+        "QSlider::groove:horizontal { height: 4px; background: rgba(255,255,255,0.3); border: none; border-radius: 2px; }"
+        "QSlider::sub-page:horizontal { background: %1; border: none; border-radius: 2px; }"
+        "QSlider::handle:horizontal { width: 13px; height: 13px; margin: -5px 0; border: none; border-radius: 6px; background: %1; }")
+                              .arg(acc));
+    pbEdit_->setIcon(makeIcon(Ic::Edit, Qt::white));
+    pbSettings_->setIcon(makeIcon(Ic::Settings, Qt::white));
     updatePlayIcon();
+    placeVideoControls();
     view_->viewport()->update();
     timeline_->update();
     for (Overlay* ov : overlays_) ov->update();
@@ -815,58 +963,45 @@ void MainWindow::updatePlayIcon() {
     if (fsPlay_) fsPlay_->setIcon(makeIcon(playing ? Ic::Pause : Ic::Play, Qt::white));
 }
 
-void MainWindow::toggleFsBar() {
-    fsBarVisible_ = !fsBarVisible_;
-    fsIdle_ = false;
-    if (fullscreen_) cursorTimer_->start();
-    placeVideoControls();
-    const QString key = shortcutText("bar");
-    if (fullscreen_ && !key.isEmpty())
-        showVideoHint(T(fsBarVisible_ ? "fsbar_shown_toast" : "fsbar_hidden_toast").arg(key), 2200);
-}
-
 bool MainWindow::playingIntent() const {
     // Beim Wechsel auf ein anderes Video pausiert der Player kurz - das zählt nicht als Pause
-    return player_->playbackState() == QMediaPlayer::PlayingState || (pending_ && pendingPlay_);
+    return player_->playbackState() == QMediaPlayer::PlayingState || (pending_ && pendingPlay_) ||
+           (scrubbing_ && scrubResume_);
 }
 
-// Vollbild-Steuerung: pausiert immer da. Beim Abspielen nur nach Mausbewegung (verschwindet kurz danach
-// wieder) - und gar nicht, wenn man die Leiste ausgeblendet hat.
-bool MainWindow::fsControlsShown() const {
-    if (!fullscreen_) return false;
-    if (!playingIntent()) return true;
-    return fsBarVisible_ && !fsIdle_;
-}
+// Abspiel-Ansicht (nicht Bearbeiten) und Vollbild: Leiste liegt über dem Bild und blendet sich aus
+bool MainWindow::overlayMode() const { return fullscreen_ || !btnEdit_->isChecked(); }
 
-void MainWindow::wakeFsControls(bool showCursor) {
-    if (showCursor) view_->viewport()->unsetCursor();
-    if (!fullscreen_) return;
-    cursorTimer_->start();
-    if (fsIdle_) {
-        fsIdle_ = false;
+bool MainWindow::barVisible() const { return overlayMode() && (pr_.pieces.isEmpty() || barShown_); }
+
+// Leiste (wieder) zeigen - nach ein paar Sekunden ohne Mausbewegung verschwindet sie von selbst
+void MainWindow::showBar() {
+    if (!overlayMode()) return;
+    if (!tool_) view_->viewport()->unsetCursor();
+    barTimer_->start();
+    if (!barShown_) {
+        barShown_ = true;
         placeVideoControls();
     }
 }
 
-// Leiste: nur im Vollbild, schmal und mittig über dem unteren Bildrand
+// Leiste: über die ganze Breite am unteren Bildrand
 void MainWindow::updateFsBar() {
     if (!fsBar_) return;
-    const bool show = fsControlsShown();
-    const int w = std::min(view_->width() - 28, 900);
-    fsBar_->setGeometry((view_->width() - w) / 2, view_->height() - fsBar_->height() - 14, w, fsBar_->height());
+    const bool show = barVisible();
+    fsBar_->setGeometry(0, view_->height() - fsBar_->height(), view_->width(), fsBar_->height());
     fsBar_->setVisible(show);
     if (show) fsBar_->raise();
-    fsBtn_->setVisible(!fullscreen_ || show);
-    // Ausgeblendet ist die Leiste nur beim Pausieren zu sehen - der Knopf holt sie dann fürs Abspielen zurück
-    const QString key = shortcutText("bar");
-    fsHideIcon_->setPixmap(makeIcon(fsBarVisible_ ? Ic::ChevronDown : Ic::ChevronUp, Qt::white)
-                               .pixmap(QSize(16, 16), devicePixelRatioF()));
-    fsHideText_->setText(T(fsBarVisible_ ? "fsbar_hide" : "fsbar_show"));
-    fsHideKey_->setText(key);
-    fsHideKey_->setVisible(!key.isEmpty());
-    fsHide_->setToolTip(key.isEmpty() ? QString() : T("fsbar_key_tip").arg(key));
-    fsHide_->setMinimumWidth(fsHide_->layout()->sizeHint().width());
+    fsBtn_->setVisible(!overlayMode());
+    pbEdit_->setVisible(!fullscreen_);
+    pbFs_->setIcon(makeIcon(fullscreen_ ? Ic::ExitFullscreen : Ic::Fullscreen, Qt::white));
+    QString fsTip = T("fullscreen_tip");
+    fsTip.remove(QRegularExpression("\\s*\\([^)]*\\)$"));
+    pbFs_->setToolTip(fsTip + " (" + shortcutText("fullscreen") + ")");
     fsPlay_->setToolTip(T("sc_play") + " (" + shortcutText("play") + ")");
+    pbEdit_->setText(T("edit"));
+    pbEdit_->setToolTip(T("edit") + " (" + shortcutText("edit") + ")");
+    pbSettings_->setToolTip(T("settings"));
     updatePlayIcon();
     updateUi();
 }
@@ -904,6 +1039,8 @@ void MainWindow::retranslate() {
     aspectBox_->setItemText(0, T("original"));
     aspectBox_->setToolTip(T("aspect_tip"));
     lblColors_->setText(T("color"));
+    lblShapeColor_->setText(T("color"));
+    chkFill_->setText(T("fill"));
     chkBg_->setText(T("background"));
     for (QCheckBox* c : {chkPieceDenoise_, chkAudioDenoise_}) {
         c->setText(T("denoise"));
@@ -911,9 +1048,21 @@ void MainWindow::retranslate() {
     }
     lblBinHint_->setText(bin_->count() ? T("bin_hint") : T("bin_empty"));
     textEdit_->setPlaceholderText(T("text_ph"));
+    boostLbl_->setText(QString::fromUtf8("▶▶  ") + T("speed_boost"));
     lblHint_->move((view_->width() - lblHint_->width()) / 2, view_->height() / 2 - 10);
     refreshInspector();
+    placeVideoControls();
+    fitToolLabels();
     timeline_->update();
+}
+
+void MainWindow::fitToolLabels() {
+    if (!tools_ || !tools_->isVisible()) return;
+    for (const BtnSpec& s : btns_)
+        if (s.text && s.b->objectName() == "tool") s.b->setText(" " + T(s.text));
+    if (tools_->layout()->sizeHint().width() > tools_->width())
+        for (const BtnSpec& s : btns_)
+            if (s.text && s.b->objectName() == "tool") s.b->setText(QString());
 }
 
 void MainWindow::placeVideoControls() {
@@ -923,21 +1072,18 @@ void MainWindow::placeVideoControls() {
     fsTip.remove(QRegularExpression("\\s*\\([^)]*\\)$"));
     fsBtn_->setToolTip(fsTip + " (" + shortcutText("fullscreen") + ")");
     updateFsBar();
-    // Knöpfe über der Leiste, wenn sie sichtbar ist
-    const int bottom = fsBar_ && fsBar_->isVisible() ? fsBar_->y() - 10 : view_->height() - 14;
-    fsBtn_->move(view_->width() - fsBtn_->width() - 14, bottom - fsBtn_->height());
+    fsBtn_->move(view_->width() - fsBtn_->width() - 14, view_->height() - 14 - fsBtn_->height());
     fsBtn_->raise();
     if (fsHint_->isVisible()) {
         fsHint_->adjustSize();
         fsHint_->move((view_->width() - fsHint_->width()) / 2, 40);
     }
+    boostLbl_->adjustSize();
+    boostLbl_->move((view_->width() - boostLbl_->width()) / 2, 18);
 }
 
 // Beim Wechsel ins Vollbild kurz zeigen, wie man wieder herauskommt
-void MainWindow::showFullscreenHint() {
-    const QString key = shortcutText("bar");
-    showVideoHint(T("fs_exit_hint") + (key.isEmpty() ? QString() : "\n" + T("fs_bar_key_hint").arg(key)), 3200);
-}
+void MainWindow::showFullscreenHint() { showVideoHint(T("fs_exit_hint"), 2600); }
 
 void MainWindow::showVideoHint(const QString& text, int ms) {
     const int gen = ++hintGen_;
@@ -963,15 +1109,51 @@ void MainWindow::showVideoHint(const QString& text, int ms) {
 }
 
 bool MainWindow::eventFilter(QObject* o, QEvent* e) {
+    // Abspiel-Taste (Leertaste): kurz drücken = Pause/Abspielen, gedrückt halten = 2× bis zum Loslassen
+    if ((e->type() == QEvent::KeyPress || e->type() == QEvent::KeyRelease) && playKey_ &&
+        (QApplication::activeWindow() == this || (silent_ && isVisible()))) {  // Tests laufen ohne aktives Fenster
+        auto* ke = static_cast<QKeyEvent*>(e);
+        const auto mods = ke->modifiers() & (Qt::ControlModifier | Qt::AltModifier | Qt::MetaModifier | Qt::ShiftModifier);
+        if (ke->key() == playKey_ && !mods && !typingFocus()) {
+            if (e->type() == QEvent::KeyPress) {
+                if (!ke->isAutoRepeat() && !playKeyDown_) {
+                    playKeyDown_ = true;
+                    if (playingIntent() && !pr_.pieces.isEmpty()) holdTimer_->start();
+                }
+            } else if (!ke->isAutoRepeat() && playKeyDown_) {
+                playKeyDown_ = false;
+                holdTimer_->stop();
+                if (boosted_) setBoost(false);
+                else togglePlay();
+            }
+            return true;
+        }
+    }
     if (o == view_ && e->type() == QEvent::Resize) placeVideoControls();
     if (o == tlScroll_->viewport() && e->type() == QEvent::Resize)
         QTimer::singleShot(0, this, [this] { timeline_->relayout(); });
     return QMainWindow::eventFilter(o, e);
 }
 
+// Leertaste gehalten: doppelt so schnell, Ton läuft mit (wie bei YouTube)
+void MainWindow::setBoost(bool on) {
+    if (boosted_ == on) return;
+    boosted_ = on;
+    boost_ = on ? 2.0 : 1.0;
+    if (!pending_ && cur_ >= 0 && cur_ < pr_.pieces.size()) player_->setPlaybackRate(pr_.pieces[cur_].speed * boost_);
+    if (pending_ && cur_ >= 0 && cur_ < pr_.pieces.size()) pendingRate_ = pr_.pieces[cur_].speed * boost_;
+    for (auto& [id, ap] : audioPlayers_) ap.p->setPlaybackRate(boost_);
+    boostLbl_->setVisible(on);
+    if (on) {
+        placeVideoControls();
+        boostLbl_->raise();
+    }
+}
+
 void MainWindow::resizeEvent(QResizeEvent* e) {
     QMainWindow::resizeEvent(e);
     fitView();
+    QTimer::singleShot(0, this, [this] { fitToolLabels(); });
     lblHint_->move((view_->width() - lblHint_->width()) / 2, view_->height() / 2 - 10);
 }
 
@@ -1006,30 +1188,32 @@ void MainWindow::applyVideoTransform() {
 
 // ---------------------------------------------------------------- Modi / Vollbild
 void MainWindow::setEditMode(bool on) {
-    Q_UNUSED(on);
+    if (on) ensureEditData();
+    if (!on) setTool(0);
     applyLayoutVisibility();
-    for (Overlay* ov : overlays_) ov->setAcceptedMouseButtons(showGuides() ? Qt::LeftButton : Qt::NoButton);
+    for (Overlay* ov : overlays_) ov->setAcceptedMouseButtons(showGuides() && !tool_ ? Qt::LeftButton : Qt::NoButton);
     for (Overlay* ov : overlays_) ov->update();
+    if (!on) showBar();
 }
 
 void MainWindow::applyLayoutVisibility() {
     const bool edit = btnEdit_->isChecked();
     topbar_->setVisible(!fullscreen_ && edit);  // obere Leiste nur beim Bearbeiten
-    transport_->setVisible(!fullscreen_);
-    tools_->setVisible(!fullscreen_ && edit);
-    tlScroll_->setVisible(!fullscreen_ && edit);
-    slider_->setVisible(!edit);  // Bearbeiten: die Zeitleiste ersetzt die Fortschrittsleiste
-    seekGap_->setVisible(edit);
+    editBottom_->setVisible(!fullscreen_ && edit);
     inspCard_->setVisible(!fullscreen_ && edit);
     mediaCard_->setVisible(!fullscreen_ && edit);
-    if (fullscreen_) {
+    // Anschauen: Video füllt das Fenster, die Leiste liegt darüber (wie bei YouTube)
+    if (overlayMode()) {
         rootLayout_->setContentsMargins(0, 0, 0, 0);
         rootLayout_->setSpacing(0);
+        view_->setStyleSheet("QGraphicsView { border-radius: 0; border: none; }");
     } else {
         rootLayout_->setContentsMargins(14, 12, 14, 14);
         rootLayout_->setSpacing(10);
+        view_->setStyleSheet(QString());
     }
-    QTimer::singleShot(0, this, [this] { fitView(); timeline_->relayout(); });
+    placeVideoControls();
+    QTimer::singleShot(0, this, [this] { fitView(); timeline_->relayout(); placeVideoControls(); fitToolLabels(); });
 }
 
 void MainWindow::toggleFullscreen() { fullscreen_ ? exitFullscreen() : enterFullscreen(); }
@@ -1037,25 +1221,22 @@ void MainWindow::toggleFullscreen() { fullscreen_ ? exitFullscreen() : enterFull
 void MainWindow::enterFullscreen() {
     fullscreen_ = true;
     wasMaximized_ = isMaximized();
+    setTool(0);
     applyLayoutVisibility();
-    view_->setStyleSheet("QGraphicsView { border-radius: 0; }");
     showFullScreen();
     for (Overlay* ov : overlays_) { ov->setAcceptedMouseButtons(Qt::NoButton); ov->update(); }
-    fsIdle_ = false;
-    cursorTimer_->start();
+    showBar();
     QTimer::singleShot(150, this, [this] { placeVideoControls(); showFullscreenHint(); });
 }
 
 void MainWindow::exitFullscreen() {
     fullscreen_ = false;
-    fsIdle_ = false;
-    cursorTimer_->stop();
     view_->viewport()->unsetCursor();
-    view_->setStyleSheet(QString());
     wasMaximized_ ? showMaximized() : showNormal();
     applyLayoutVisibility();
     setEditMode(btnEdit_->isChecked());
     fsHint_->hide();
+    showBar();
     QTimer::singleShot(150, this, [this] { placeVideoControls(); });
 }
 
@@ -1064,19 +1245,35 @@ void MainWindow::dragEnterEvent(QDragEnterEvent* e) {
     if (e->mimeData()->hasUrls()) e->acceptProposedAction();
 }
 
+// Dateien ins Fenster ziehen: ohne Projekt wird die erste geöffnet. Beim Anschauen ersetzt ein Video/Ton auf dem
+// Bild das aktuelle. Beim Bearbeiten landet alles im Medien-Panel; auf das Bild gezogen auch gleich an der
+// Abspielposition (die Zeitleiste nimmt Dateien selbst an der Stelle an, wo man sie loslässt).
 void MainWindow::dropEvent(QDropEvent* e) {
     QStringList files;
     for (const QUrl& u : e->mimeData()->urls())
         if (u.isLocalFile()) files << u.toLocalFile();
     if (files.isEmpty()) return;
-    if (pr_.pieces.isEmpty()) openFile(files.takeFirst());
-    for (const QString& f : files) addToBin(f);
-    if (!files.isEmpty()) btnEdit_->setChecked(true);
+    e->acceptProposedAction();
+    const bool onVideo = view_->rect().contains(view_->mapFrom(this, e->position().toPoint()));
+    auto playable = [](const QString& f) { return mediaKindOf(f) != MediaKind::Image; };
+    if (pr_.pieces.isEmpty() || (!btnEdit_->isChecked() && onVideo)) {
+        for (int i = 0; i < files.size(); ++i)
+            if (playable(files[i])) { openFile(files.takeAt(i)); break; }
+        for (const QString& f : files) addToBin(f);
+        if (!files.isEmpty() && !pr_.pieces.isEmpty()) btnEdit_->setChecked(true);
+        return;
+    }
+    if (!btnEdit_->isChecked()) btnEdit_->setChecked(true);
+    for (const QString& f : files) {
+        addToBin(f);
+        if (onVideo) insertFromBin(f);
+    }
 }
 
 void MainWindow::openDialog() {
     QString f = QFileDialog::getOpenFileName(this, T("open_video"), QString(),
-                                             "Video (*.mp4 *.mov *.mkv *.m4v *.avi *.webm *.wmv *.flv);;*.*");
+                                             T("media_files") + " (*.mp4 *.mov *.mkv *.m4v *.avi *.webm *.wmv *.flv *.ts "
+                                             "*.mp3 *.wav *.m4a *.aac *.flac *.ogg *.opus *.wma *.aiff);;*.*");
     if (!f.isEmpty()) openFile(f);
 }
 
@@ -1098,12 +1295,16 @@ void MainWindow::openSettings() {
 }
 
 void MainWindow::openFile(const QString& path) {
+    trace("openFile");
     player_->stop();
     for (auto& [id, ap] : audioPlayers_) { ap.p->stop(); ap.p->deleteLater(); ap.out->deleteLater(); }
     audioPlayers_.clear();
+    setTool(0);
+    setBoost(false);
     pr_ = Project();
     Source s;
     s.path = path;
+    s.video = mediaKindOf(path) != MediaKind::Audio;
     pr_.sources.push_back(s);
     undo_.clear();
     redo_.clear();
@@ -1116,20 +1317,31 @@ void MainWindow::openFile(const QString& path) {
     canvasSet_ = false;
     loadedSrc_ = 0;
     pending_ = false;
-    fsBarVisible_ = true;  // ausgeblendete Vollbild-Leiste gilt nur für das eine Video
-    fsIdle_ = false;
-    fsHint_->hide();       // "Leiste ausgeblendet" passt nicht mehr
-    placeVideoControls();
+    scrubbing_ = false;
+    fsHint_->hide();
     lblHint_->hide();
     setWindowTitle(QFileInfo(path).fileName());
+    // Tondatei: schwarze 16:9-Fläche mit Noten-Symbol und Namen
+    view_->setAmbient(QImage());  // kein Licht vom vorherigen Video
+    view_->setAudioTitle(s.video ? QString() : QFileInfo(path).completeBaseName());
+    if (!s.video) {
+        canvasSet_ = true;
+        canvasBg_->setBrush(Qt::black);
+        pr_.natW = 1920;
+        pr_.natH = 1080;
+        applyCanvas();
+    }
     player_->setSource(QUrl());  // dieselbe Datei nochmal öffnen: sonst lädt der Player sie nicht neu
     player_->setSource(QUrl::fromLocalFile(path));
     player_->pause();  // erstes Bild sofort anzeigen
+    // Erst das Video, alles fürs Bearbeiten (Wellenform, Vorschaubilder) später bzw. erst im Bearbeiten-Modus
     addToBin(path);
-    startWaves(path);
+    if (editData_) startWaves(path);
     rebuildOverlays();
     refreshInspector();
     timeline_->relayout();
+    barShown_ = false;
+    showBar();
 }
 
 void MainWindow::onDuration(qint64 ms) {
@@ -1139,11 +1351,40 @@ void MainWindow::onDuration(qint64 ms) {
         pr_.pieces = {Piece{0, 0.0, ms / 1000.0, 1.0}};
         timeline_->relayout();
         updateUi();
-        QTimer::singleShot(100, this, [this] {
-            if (pr_.sources.isEmpty()) return;
-            startThumbs(0);
+        // Vorschaubilder (für das Bild beim Spulen) erst, wenn das Video schon läuft
+        const QString path = pr_.sources[0].path;
+        QTimer::singleShot(editData_ ? 100 : 1500, this, [this, path] {
+            if (!pr_.sources.isEmpty() && pr_.sources[0].path == path) startThumbs(0);
         });
     }
+}
+
+// Alles, was nur der Editor braucht, beim ersten Wechsel ins Bearbeiten nachholen
+void MainWindow::ensureEditData() {
+    if (!editData_) {
+        editData_ = true;
+        const QStringList pending = pendingBinThumbs_;
+        pendingBinThumbs_.clear();
+        for (const QString& p : pending) {
+            for (int i = 0; i < bin_->count(); ++i)
+                if (bin_->item(i)->data(Qt::UserRole).toString() == p) { delete bin_->takeItem(i); break; }
+            addToBin(p);
+        }
+    }
+    for (int i = 0; i < pr_.sources.size(); ++i) {
+        startWaves(pr_.sources[i].path);
+        startThumbs(i);
+    }
+}
+
+void MainWindow::ensureFonts() {
+    if (fontsReady_) return;
+    fontsReady_ = true;
+    registerSpecialFonts();
+    for (const QString& f : specialFonts()) fontBox_->addItem(QString::fromUtf8("★ ") + f, f);
+    fontBox_->insertSeparator(fontBox_->count());
+    for (const QString& f : QFontDatabase::families())
+        if (!specialFonts().contains(f) && !f.startsWith('@')) fontBox_->addItem(f, f);
 }
 
 void MainWindow::onNativeSize(const QSizeF& s) {
@@ -1221,6 +1462,10 @@ QImage MainWindow::frameImage() {
 }
 
 void MainWindow::onFrame(const QVideoFrame& f) {
+    if (!firstFrame_ && f.isValid()) {
+        firstFrame_ = true;
+        trace("first frame");
+    }
     frame_ = f;
     frameImgValid_ = false;
     bool blurVisible = false;
@@ -1246,16 +1491,7 @@ void MainWindow::onState(QMediaPlayer::PlaybackState st) {
     else timer_->stop();
     updatePlayIcon();
     updateAudio(true);
-    // Vollbild: pausiert sofort Steuerung + Mauszeiger zeigen; beim Abspielen blendet sie sich bald aus
-    if (fullscreen_) {
-        if (!playingIntent()) {
-            fsIdle_ = false;
-            view_->viewport()->unsetCursor();
-        } else if (!fsIdle_) {
-            cursorTimer_->start();
-        }
-        placeVideoControls();
-    }
+    if (st != QMediaPlayer::PlayingState && boosted_ && !scrubbing_) setBoost(false);
 }
 
 void MainWindow::togglePlay() {
@@ -1263,6 +1499,7 @@ void MainWindow::togglePlay() {
     if (player_->playbackState() == QMediaPlayer::PlayingState) {
         player_->pause();
         if (osd_) osd_->flash(Osd::Pause);
+        showBar();  // pausiert: Leiste kurz zeigen (verschwindet aber auch pausiert wieder)
     } else {
         if (t_ >= pr_.total() - 0.05) seek(0);
         player_->play();
@@ -1281,21 +1518,24 @@ void MainWindow::activate(int i, double srcPos, bool play) {
         pending_ = true;
         pendingPlay_ = play;
         pendingPos_ = srcPos;
-        pendingRate_ = p.speed;
+        pendingRate_ = p.speed * boost_;
+        view_->setAudioTitle(pr_.sources[p.src].video ? QString() : QFileInfo(pr_.sources[p.src].path).completeBaseName());
         player_->setSource(QUrl::fromLocalFile(pr_.sources[p.src].path));
         player_->pause();
         return;
     }
     if (pending_) {  // Ladevorgang läuft noch: Ziel aktualisieren
         pendingPos_ = srcPos;
-        pendingRate_ = p.speed;
+        pendingRate_ = p.speed * boost_;
         pendingPlay_ = play;
         return;
     }
-    player_->setPlaybackRate(p.speed);
+    player_->setPlaybackRate(p.speed * boost_);
     applyPlayerVolume();
     // Nur springen, wenn es wirklich woanders hingeht; bis der Player angekommen ist, liefert er noch die alte Position
     if (std::abs(player_->position() / 1000.0 - srcPos) > 0.04) {
+        // Beim Abspielen kurz stumm: sonst spielt der Puffer noch Ton von der alten Stelle ("komische Geräusche")
+        if (player_->playbackState() == QMediaPlayer::PlayingState) muteBriefly();
         player_->setPosition(qint64(srcPos * 1000));
         seeking_ = true;
         seekSrc_ = srcPos;
@@ -1309,9 +1549,39 @@ void MainWindow::applyPlayerVolume() {
     audio_->setVolume(float(std::clamp(pv * masterVol_, 0.0, 1.0)));
 }
 
+void MainWindow::muteBriefly() {
+    audio_->setMuted(true);
+    unmuteTimer_->start();
+}
+
+// Ziehen beginnt: anhalten und stumm. Vorher liefen die Sprünge beim Abspielen weiter - jeder Sprung spielte ein
+// Stück Ton, und das Video lief zwischen den Sprüngen ein Stück weiter.
+void MainWindow::beginScrub() {
+    if (scrubbing_ || pr_.pieces.isEmpty()) return;
+    scrubResume_ = player_->playbackState() == QMediaPlayer::PlayingState || (pending_ && pendingPlay_);
+    scrubbing_ = true;
+    audio_->setMuted(true);
+    unmuteTimer_->stop();
+    if (player_->playbackState() == QMediaPlayer::PlayingState) player_->pause();
+    if (pending_) pendingPlay_ = false;
+}
+
+// Ziehen vorbei (Stelle ist schon angesprungen): weiter wie vorher, Ton nach einem Moment wieder an
+void MainWindow::endScrub() {
+    if (!scrubbing_) return;
+    scrubbing_ = false;
+    if (scrubResume_) {
+        if (pending_) pendingPlay_ = true;
+        else if (t_ < pr_.total() - 0.05) player_->play();
+    }
+    scrubResume_ = false;
+    muteBriefly();
+}
+
 // Beim Ziehen: Zeit/Anzeige sofort, echte Sprünge höchstens alle 120 ms (sonst staut sich der Decoder)
 void MainWindow::scrub(double t) {
     if (pr_.pieces.isEmpty()) return;
+    beginScrub();
     scrubTarget_ = std::clamp(t, 0.0, pr_.total());
     const qint64 since = seekThrottle_.isValid() ? seekThrottle_.elapsed() : 1000;
     if (since >= 120) {
@@ -1398,6 +1668,7 @@ void MainWindow::tick() {
         player_->pause();
         t_ = pr_.total();
         updateUi();
+        showBar();  // zu Ende: Leiste zeigen
         return;
     }
     t_ = pr_.outStart(cur_) + std::max(0.0, src - p->start) / p->speed;
@@ -1408,18 +1679,13 @@ void MainWindow::tick() {
 void MainWindow::updateUi() {
     double total = pr_.total();
     // Beim Ziehen an der Leiste zeigt die Zeit schon die Zielstelle, das Video bleibt bis zum Loslassen
-    const QSlider* drag = slider_->isSliderDown() ? slider_ : fsSlider_ && fsSlider_->isSliderDown() ? fsSlider_ : nullptr;
-    const double shown = drag ? drag->value() / 10000.0 * total : t_;
+    const double shown = slider_->isSliderDown() ? slider_->value() / 10000.0 * total : t_;
     lblTime_->setText(fmtTime(shown) + " / " + fmtTime(total));
-    if (!slider_->isSliderDown()) {
-        QSignalBlocker b(slider_);
-        slider_->setValue(total > 0 ? int(t_ / total * 10000) : 0);
-    }
     if (fsBar_ && fsBar_->isVisible()) {
         fsTime_->setText(fmtTime(shown) + " / " + fmtTime(total));
-        if (!fsSlider_->isSliderDown()) {
-            QSignalBlocker b(fsSlider_);
-            fsSlider_->setValue(total > 0 ? int(t_ / total * 10000) : 0);
+        if (!slider_->isSliderDown()) {
+            QSignalBlocker b(slider_);
+            slider_->setValue(total > 0 ? int(t_ / total * 10000) : 0);
         }
     }
     for (Overlay* ov : overlays_) {
@@ -1444,6 +1710,8 @@ void MainWindow::syncAudioPlayers() {
         if (audioPlayers_.count(a.id)) continue;
         AudioPlayer ap{new QMediaPlayer(this), new QAudioOutput(this)};
         ap.p->setAudioOutput(ap.out);
+        ap.out->setMuted(silent_);
+        ap.p->setPlaybackRate(boost_);
         ap.p->setSource(QUrl::fromLocalFile(a.path));
         audioPlayers_[a.id] = ap;
     }
@@ -1509,6 +1777,10 @@ void MainWindow::ensureProbed() {
         s.fps = m.fps;
         s.hasAudio = m.hasAudio;
         if (s.duration <= 0) s.duration = m.duration;
+        if (!s.video || m.w <= 0) {  // Tondatei: Bild bleibt schwarz, für den Export wie ein 30-fps-Video behandeln
+            s.video = false;
+            if (s.fps <= 0) s.fps = 30;
+        }
         s.probed = true;
     }
 }
@@ -1607,7 +1879,10 @@ void MainWindow::refreshInspector() {
         lastSel_ = sel;
         textUndo_ = false;
     }
+    if (it && it->kind == Item::Text) ensureFonts();
     textBox_->setVisible(it && it->kind == Item::Text);
+    shapeBox_->setVisible(it && it->graphic());
+    chkFill_->setVisible(it && it->kind == Item::Shape && (it->shape == Item::Rect || it->shape == Item::Ellipse));
     chkAudioDenoise_->setVisible(au != nullptr);
     sliderStr_->setVisible(true);
     lblStr_->setVisible(true);
@@ -1623,14 +1898,28 @@ void MainWindow::refreshInspector() {
         { QSignalBlocker c(chkAudioDenoise_); chkAudioDenoise_->setChecked(au->denoise); }
     } else if (it) {
         insp_->setCurrentIndex(2);
-        lblItem_->setText(it->kind == Item::Image ? T("image") : it->kind == Item::Text ? T("text") : T("blur_area"));
+        static const char* shapeKeys[] = {"shape_rect", "shape_ellipse", "shape_arrow", "shape_line"};
+        lblItem_->setText(it->kind == Item::Image ? T("image") : it->kind == Item::Text ? T("text")
+                          : it->kind == Item::Draw ? T("drawing")
+                          : it->kind == Item::Shape ? T(shapeKeys[std::clamp(it->shape, 0, 3)]) : T("blur_area"));
         { QSignalBlocker b(spT0_); spT0_->setValue(it->t0); }
         { QSignalBlocker b(spT1_); spT1_->setValue(it->t1); }
-        lblStr_->setText(it->kind == Item::Blur ? T("strength") : T("size"));
+        lblStr_->setText(it->kind == Item::Blur ? T("strength") : it->graphic() ? T("stroke") : T("size"));
         {
             QSignalBlocker b(sliderStr_);
-            sliderStr_->setRange(5, 100);
-            sliderStr_->setValue(it->kind == Item::Blur ? int(it->strength) : int(it->w * 100));
+            if (it->graphic()) {
+                sliderStr_->setRange(1, 40);
+                sliderStr_->setValue(qRound(it->stroke));
+            } else {
+                sliderStr_->setRange(5, 100);
+                sliderStr_->setValue(it->kind == Item::Blur ? int(it->strength) : int(it->w * 100));
+            }
+        }
+        if (it->graphic()) {
+            btnShapeColor_->setStyleSheet(QString("QPushButton { background: %1; border: 1px solid #888; border-radius: 5px; }")
+                                              .arg(QColor::fromRgba(it->color).name(QColor::HexArgb)));
+            QSignalBlocker b(chkFill_);
+            chkFill_->setChecked(it->fill);
         }
         if (it->kind == Item::Text) {
             if (textEdit_->toPlainText() != it->text) { QSignalBlocker b(textEdit_); textEdit_->setPlainText(it->text); }
@@ -1710,6 +1999,9 @@ void MainWindow::sliderChanged(int v) {
     if (!it) return;
     if (it->kind == Item::Blur) {
         it->strength = v;
+        for (Overlay* ov : overlays_) ov->update();
+    } else if (it->graphic()) {
+        it->stroke = v;
         for (Overlay* ov : overlays_) ov->update();
     } else if (it->kind == Item::Text) {
         const double k = (v / 100.0) / std::max(0.01, it->w);
@@ -1897,17 +2189,143 @@ void MainWindow::addImageFile(const QString& f) {
     newItem(it);
 }
 
-// ---------------------------------------------------------------- Medien-Sammlung (rechts)
-enum class MediaKind { Video, Audio, Image };
-
-static MediaKind mediaKindOf(const QString& path) {
-    const QString e = QFileInfo(path).suffix().toLower();
-    static const QStringList img = {"png", "jpg", "jpeg", "webp", "bmp", "gif"};
-    static const QStringList aud = {"mp3", "wav", "m4a", "aac", "flac", "ogg", "opus", "wma"};
-    if (img.contains(e)) return MediaKind::Image;
-    if (aud.contains(e)) return MediaKind::Audio;
-    return MediaKind::Video;
+// ---------------------------------------------------------------- Zeichnen und Formen
+void MainWindow::setTool(int tool) {
+    if (tool && (pr_.pieces.isEmpty() || fullscreen_)) tool = 0;
+    if (tool && !btnEdit_->isChecked()) btnEdit_->setChecked(true);  // Zeichnen gehört zum Bearbeiten
+    const bool changed = tool != tool_;
+    tool_ = tool;
+    if (btnDraw_) btnDraw_->setChecked(tool == 1);
+    if (btnShape_) btnShape_->setChecked(tool == 2);
+    view_->setToolActive(tool != 0);
+    if (tool == 1 && changed) drawItem_ = 0;  // jede Zeichen-Runde wird ein eigenes Element
+    if (toolPreview_ && !tool) {
+        scene_->removeItem(toolPreview_);
+        delete toolPreview_;
+        toolPreview_ = nullptr;
+    }
+    for (Overlay* ov : overlays_) ov->setAcceptedMouseButtons(showGuides() && !tool ? Qt::LeftButton : Qt::NoButton);
+    if (tool && changed) showVideoHint(T(tool == 1 ? "draw_hint" : "shape_hint"), 2600);
 }
+
+static QPointF clampToCanvas(const QPointF& p, const Project& pr) {
+    return QPointF(std::clamp(p.x(), 0.0, double(pr.vw)), std::clamp(p.y(), 0.0, double(pr.vh)));
+}
+
+void MainWindow::toolPress(const QPointF& sp) {
+    const QPointF p = clampToCanvas(sp, pr_);
+    toolPts_ = {p};
+    if (!toolPreview_) {
+        toolPreview_ = new QGraphicsPathItem;
+        toolPreview_->setZValue(30);
+        scene_->addItem(toolPreview_);
+    }
+    QPen pen(QColor::fromRgba(graphicColor_), std::max(1.0, 8.0 * pr_.vh / 1080.0), Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin);
+    toolPreview_->setPen(pen);
+    toolPreview_->setBrush(Qt::NoBrush);
+    QPainterPath path;
+    path.addEllipse(p, pen.widthF() / 2, pen.widthF() / 2);
+    toolPreview_->setPath(path);
+}
+
+void MainWindow::toolMove(const QPointF& sp) {
+    if (!toolPreview_ || toolPts_.isEmpty()) return;
+    const QPointF p = clampToCanvas(sp, pr_);
+    QPainterPath path;
+    if (tool_ == 1) {
+        if (QLineF(toolPts_.last(), p).length() < 1.5) return;
+        toolPts_ << p;
+        path.addPolygon(toolPts_);
+    } else {
+        if (toolPts_.size() < 2) toolPts_ << p;
+        else toolPts_[1] = p;
+        const QRectF r = QRectF(toolPts_[0], toolPts_[1]).normalized();
+        if (shapeKind_ == Item::Rect) path.addRect(r);
+        else if (shapeKind_ == Item::Ellipse) path.addEllipse(r);
+        else { path.moveTo(toolPts_[0]); path.lineTo(toolPts_[1]); }
+    }
+    toolPreview_->setPath(path);
+}
+
+void MainWindow::toolRelease(const QPointF& sp) {
+    toolMove(sp);
+    if (toolPreview_) toolPreview_->setPath(QPainterPath());
+    if (toolPts_.isEmpty() || pr_.pieces.isEmpty()) return;
+    const double sw = std::max(1.0, 8.0 * pr_.vh / 1080.0);
+    auto toBox = [this](const QRectF& r) {
+        const QRectF c = r.intersected(QRectF(0, 0, pr_.vw, pr_.vh));
+        return QRectF(c.x() / pr_.vw, c.y() / pr_.vh, std::max(c.width(), 4.0) / pr_.vw, std::max(c.height(), 4.0) / pr_.vh);
+    };
+    if (tool_ == 1) {
+        // Alle Linien dieser Zeichnung in Bild-Koordinaten sammeln, Rahmen drumherum, dann auf den Rahmen beziehen
+        QList<QPolygonF> lines;
+        Item* old = drawItem_ ? pr_.item(drawItem_) : nullptr;
+        if (old) {
+            const QRectF ob(old->x * pr_.vw, old->y * pr_.vh, old->w * pr_.vw, old->h * pr_.vh);
+            for (const QPolygonF& s : old->strokes) {
+                QPolygonF q;
+                for (const QPointF& pt : s) q << QPointF(ob.x() + pt.x() * ob.width(), ob.y() + pt.y() * ob.height());
+                lines << q;
+            }
+        }
+        lines << toolPts_;
+        QRectF bb;
+        for (const QPolygonF& s : lines) bb = bb.isNull() ? s.boundingRect() : bb.united(s.boundingRect());
+        bb = bb.adjusted(-sw, -sw, sw, sw);
+        const QRectF box = toBox(bb);
+        const QRectF bpx(box.x() * pr_.vw, box.y() * pr_.vh, box.width() * pr_.vw, box.height() * pr_.vh);
+        QList<QPolygonF> norm;
+        for (const QPolygonF& s : lines) {
+            QPolygonF q;
+            for (const QPointF& pt : s) q << QPointF((pt.x() - bpx.x()) / bpx.width(), (pt.y() - bpx.y()) / bpx.height());
+            norm << q;
+        }
+        if (old) {
+            pushUndo();
+            old->x = box.x(); old->y = box.y(); old->w = box.width(); old->h = box.height();
+            old->strokes = norm;
+            modelEdited(true);
+            rebuildOverlays();
+        } else {
+            Item it;
+            it.kind = Item::Draw;
+            it.color = graphicColor_;
+            it.x = box.x(); it.y = box.y(); it.w = box.width(); it.h = box.height();
+            it.strokes = norm;
+            newItem(it);
+            drawItem_ = pr_.items.last().id;
+        }
+        for (Overlay* ov : overlays_) ov->setAcceptedMouseButtons(Qt::NoButton);  // weiterzeichnen statt verschieben
+    } else {
+        QPointF a = toolPts_[0], b = toolPts_.size() > 1 ? toolPts_[1] : toolPts_[0];
+        if (QLineF(a, b).length() < 6) {  // nur geklickt: Form in Standardgröße um die Stelle
+            const double w = pr_.vw * 0.25, h = shapeKind_ >= Item::Arrow ? pr_.vh * 0.12 : pr_.vh * 0.25;
+            a = QPointF(a.x() - w / 2, a.y() - h / 2);
+            b = QPointF(a.x() + w, a.y() + h);
+            if (shapeKind_ >= Item::Arrow) { a.setY(a.y() + h / 2); b.setY(a.y()); }
+        }
+        Item it;
+        it.kind = Item::Shape;
+        it.shape = shapeKind_;
+        it.color = graphicColor_;
+        QRectF r = QRectF(a, b).normalized();
+        if (shapeKind_ >= Item::Arrow) {
+            // Platz für Strich und Pfeilspitze; Endpunkte beziehen sich auf den um sw/2 eingerückten Rahmen
+            const double pad = sw / 2 + (shapeKind_ == Item::Arrow ? (sw * 4.5 + 10) * 0.5 : sw / 2);
+            r = r.adjusted(-pad, -pad, pad, pad);
+            const QRectF in = r.adjusted(sw / 2, sw / 2, -sw / 2, -sw / 2);
+            auto rel = [&in](const QPointF& q) { return QPointF((q.x() - in.x()) / in.width(), (q.y() - in.y()) / in.height()); };
+            it.strokes = {QPolygonF({rel(a), rel(b)})};
+        }
+        const QRectF box = toBox(r);
+        it.x = box.x(); it.y = box.y(); it.w = box.width(); it.h = box.height();
+        newItem(it);
+        setTool(0);  // eine Form pro Klick auf "Form" - danach direkt verschieben/größer machen
+    }
+    toolPts_.clear();
+}
+
+// ---------------------------------------------------------------- Medien-Sammlung (links)
 
 // Vorschau-Kachel 16:9 mit mittig eingepasstem Bild
 static QIcon binIcon(const QImage& src, const QColor& bg, const QPixmap& symbol = QPixmap()) {
@@ -1979,6 +2397,10 @@ void MainWindow::addToBin(const QString& path) {
         it->setIcon(binIcon(QImage(path), QColor(0, 0, 0)));
     } else if (kind == MediaKind::Audio) {
         it->setIcon(binIcon(QImage(), audioColor().darker(160), makeIcon(Ic::Music, Qt::white).pixmap(44, 44)));
+    } else if (!editData_) {
+        // Beim reinen Anschauen braucht niemand das Vorschaubild - erst beim Bearbeiten holen
+        it->setIcon(binIcon(QImage(), QColor(0, 0, 0), makeIcon(Ic::AddVideo, th.muted).pixmap(40, 40)));
+        pendingBinThumbs_ << path;
     } else {
         it->setIcon(binIcon(QImage(), QColor(0, 0, 0), makeIcon(Ic::AddVideo, th.muted).pixmap(40, 40)));
         // erstes Bild des Videos im Hintergrund holen
@@ -2025,6 +2447,7 @@ void MainWindow::insertFromBin(const QString& path) {
 // ---------------------------------------------------------------- Text
 void MainWindow::addText() {
     if (pr_.pieces.isEmpty()) return;
+    ensureFonts();
     Item it;
     it.kind = Item::Text;
     it.text = T("text_ph");
@@ -2039,6 +2462,16 @@ void MainWindow::addText() {
 
 void MainWindow::pickItemColor(bool background) {
     Item* it = pr_.item(selItem_);
+    if (it && it->graphic()) {
+        const QColor c = QColorDialog::getColor(QColor::fromRgba(it->color), this, T("color"), QColorDialog::ShowAlphaChannel);
+        if (!c.isValid()) return;
+        pushUndo();
+        it->color = c.rgba();
+        graphicColor_ = it->color;  // nächste Zeichnung/Form in derselben Farbe
+        for (Overlay* ov : overlays_) ov->update();
+        refreshInspector();
+        return;
+    }
     if (!it || it->kind != Item::Text) return;
     const QColor cur = QColor::fromRgba(background ? it->bgColor : it->color);
     const QColor c = QColorDialog::getColor(cur, this, T("color"), QColorDialog::ShowAlphaChannel);
@@ -2176,9 +2609,9 @@ void MainWindow::exportVideo() {
     Project ep = pr_;
     auto textDir = std::make_shared<QTemporaryDir>();
     for (Item& it : ep.items) {
-        if (it.kind != Item::Text) continue;
+        if (it.kind != Item::Text && !it.graphic()) continue;
         const QString png = textDir->filePath(QString("text%1.png").arg(it.id));
-        renderTextImage(it, QSize(std::max(2, int(it.w * eo.width)), std::max(2, int(it.h * eo.height)))).save(png);
+        renderItemImage(it, QSize(std::max(2, int(it.w * eo.width)), std::max(2, int(it.h * eo.height))), eo.height).save(png);
         it.path = png;
     }
     QStringList args = buildExport(ep, eo, out);
@@ -2288,7 +2721,7 @@ void MainWindow::selfShots(const QString& dir) {
     });
     QTimer::singleShot(11500, this, [=] {
         shot("e_light_ja");
-        setCurrentTheme("violet");
+        setCurrentTheme("studio");
         setLanguage("de");
         applyTheme();
         retranslate();
@@ -2344,67 +2777,168 @@ void MainWindow::selfShots(const QString& dir) {
     });
 }
 
+// Entwickler-Test (lautlos, unsichtbar): Leiste, Leertaste halten, Spulen, Kürzen, Verschieben, Zeichnen, Formen, Ton-Datei.
+// Aufruf: Cutline <video> --fsshots <ordner> [<tondatei>]
 void MainWindow::fsShots(const QString& dir) {
-    audio_->setMuted(true);  // Tests laufen lautlos
-    auto step = [this, dir](const QString& name) {
-        grab().save(dir + "/fs_" + name + ".png");
+    silent_ = true;
+    audio_->setMuted(true);
+    const QStringList args = QApplication::arguments();
+    const QString audioFile = args.size() > 4 ? args[4] : QString();
+    auto logLine = [dir](const QString& line) {
         QFile f(dir + "/fs.txt");
         f.open(QIODevice::Append | QIODevice::Text);
-        f.write(QString("%1: bar=%2 fsBtn=%3 cursorBlank=%4 playing=%5 button=\"%6\" key=\"%7\" hint=\"%8\"\n")
-                    .arg(name)
-                    .arg(fsBar_->isVisible())
-                    .arg(fsBtn_->isVisible())
-                    .arg(view_->viewport()->cursor().shape() == Qt::BlankCursor)
-                    .arg(playingIntent())
-                    .arg(fsHideText_->text(), fsHideKey_->text(),
-                         fsHint_->isVisible() ? fsHint_->text().replace('\n', " / ") : QString())
-                    .toUtf8());
+        f.write((line + "\n").toUtf8());
+    };
+    auto step = [this, dir, logLine](const QString& name) {
+        grab().save(dir + "/fs_" + name + ".png");
+        logLine(QString("%1: bar=%2 playing=%3 scrubbing=%4 boost=%5 rate=%6 muted=%7 t=%8 pieces=%9 items=%10 edit=%11")
+                    .arg(name).arg(fsBar_->isVisible()).arg(player_->playbackState() == QMediaPlayer::PlayingState)
+                    .arg(scrubbing_).arg(boosted_).arg(player_->playbackRate()).arg(audio_->isMuted())
+                    .arg(t_, 0, 'f', 2).arg(pr_.pieces.size()).arg(pr_.items.size()).arg(btnEdit_->isChecked()));
+    };
+    auto key = [this](QEvent::Type type) {
+        QKeyEvent ev(type, Qt::Key_Space, Qt::NoModifier);
+        QApplication::sendEvent(this, &ev);
+    };
+    auto mouse = [](QWidget* w, QEvent::Type type, QPointF pos) {
+        QMouseEvent ev(type, pos, w->mapToGlobal(pos), type == QEvent::MouseMove ? Qt::NoButton : Qt::LeftButton,
+                       type == QEvent::MouseButtonRelease ? Qt::NoButton : Qt::LeftButton, Qt::NoModifier);
+        QApplication::sendEvent(w, &ev);
     };
     auto at = [this](int ms, std::function<void()> fn) { QTimer::singleShot(ms, this, fn); };
-    at(2500, [=] { enterFullscreen(); togglePlay(); });
-    at(3000, [=] { step("1_play_start"); });
-    at(6200, [=] { step("2_play_idle"); emit view_->mouseActivity(); });
-    at(6400, [=] { step("3_mouse"); togglePlay(); });
-    at(6600, [=] { step("4_paused"); });
-    at(9600, [=] { step("5_paused_wait"); toggleFsBar(); });
-    at(9800, [=] { step("6_paused_hidden"); togglePlay(); });
-    at(10100, [=] { step("7_play_hidden"); emit view_->mouseActivity(); });
-    at(10300, [=] { step("8_play_hidden_mouse"); scActions_["fwd"]->trigger(); });
-    at(10500, [=] { step("9_play_hidden_seek"); togglePlay(); });
-    at(10700, [=] { step("10_pause_hidden"); toggleFsBar(); togglePlay(); });
-    at(10900, [=] { step("11_play_shown"); scActions_["fwd"]->trigger(); });
-    at(11000, [=] { step("12_play_seek"); exitFullscreen(); });
-    at(11500, [=] { step("13_windowed"); enterFullscreen(); });
-    // Neues Video öffnen: ausgeblendete Leiste ist wieder da
-    at(12500, [=] { toggleFsBar(); });
-    at(12700, [=] {
-        step("14_hidden_before_open");
-        const QString file = pr_.sources[0].path;  // Kopie: openFile setzt das Projekt zurück
-        openFile(file);
-    });
-    at(14000, [=] { togglePlay(); });
-    at(14300, [=] {
-        step("15_new_video_playing");
-        QFile f(dir + "/fs.txt");
-        f.open(QIODevice::Append | QIODevice::Text);
-        f.write(QString("   pieces=%1 state=%2 status=%3 dur=%4 loading=%5\n").arg(pr_.pieces.size()).arg(int(player_->playbackState()))
-                    .arg(int(player_->mediaStatus())).arg(player_->duration()).arg(loading_).toUtf8());
-    });
-    // Ziehen an der Leiste: Video bleibt, erst Loslassen springt
-    auto logT = [this, dir](const QString& what) {
-        QFile f(dir + "/fs.txt");
-        f.open(QIODevice::Append | QIODevice::Text);
-        f.write(QString("%1: t=%2 label=%3\n").arg(what).arg(t_, 0, 'f', 2).arg(lblTime_->text()).toUtf8());
-    };
-    at(14500, [=] {
-        exitFullscreen();
-        logT("16_before_drag");
+
+    // Leiste beim Anschauen: kommt mit der Maus, geht nach ein paar Sekunden - auch pausiert; Weiterspielen holt sie nicht
+    at(2500, [=] { togglePlay(); });
+    at(2700, [=] { step("01_play_start"); });
+    at(5700, [=] { step("02_play_idle"); emit view_->mouseActivity(); });
+    at(5900, [=] { step("03_mouse"); });
+    at(8900, [=] { step("04_idle_again"); togglePlay(); });
+    at(9100, [=] { step("05_paused_shows"); });
+    at(12100, [=] { step("06_paused_idle_hides"); togglePlay(); });
+    at(12300, [=] { step("07_unpause_stays_hidden"); });
+    // Leertaste halten = 2×, kurz tippen = Pause
+    at(12400, [=] { key(QEvent::KeyPress); });
+    at(12950, [=] { step("08_space_held"); key(QEvent::KeyRelease); });
+    at(13100, [=] { step("09_space_released"); key(QEvent::KeyPress); key(QEvent::KeyRelease); });
+    at(13250, [=] { step("10_space_tap_pauses"); togglePlay(); });
+    // Spulen am Fortschritt: pausiert + stumm, danach spielt es weiter
+    at(13600, [=] {
         slider_->setSliderDown(true);
-        slider_->setValue(8000);
-        emit slider_->sliderMoved(8000);
+        emit slider_->sliderPressed();
+        slider_->setValue(6000);
+        emit slider_->sliderMoved(6000);
     });
-    at(15000, [=] { logT("17_while_drag"); slider_->setSliderDown(false); });
-    at(15500, [=] { logT("18_after_release"); QApplication::quit(); });
+    at(13800, [=] { step("11_while_scrub"); slider_->setSliderDown(false); emit slider_->sliderReleased(); });
+    at(14300, [=] { step("12_after_scrub_plays"); togglePlay(); });
+
+    // Bearbeiten: Ränder kürzen (Rand folgt der Maus, danach rückt alles zusammen), Abschnitte verschieben
+    at(14500, [=] { btnEdit_->setChecked(true); });
+    at(15500, [=] {
+        step("13_edit");
+        seek(pr_.total() / 2);
+        selectPiece(-1);
+        doSplit();  // zwei Abschnitte
+        logLine(QString("split: pieces=%1 total=%2").arg(pr_.pieces.size()).arg(pr_.total(), 0, 'f', 2));
+    });
+    at(16000, [=] {
+        // rechten Rand des ersten Abschnitts nach links ziehen
+        const double x1 = 14 + pr_.outStart(1) * (timeline_->width() - 28) / pr_.total();
+        const double y = 26 + 40;
+        logLine(QString("trim press x=%1 tlw=%2").arg(x1, 0, 'f', 1).arg(timeline_->width()));
+        mouse(timeline_, QEvent::MouseButtonPress, QPointF(x1 - 3, y));
+        mouse(timeline_, QEvent::MouseMove, QPointF(x1 - 80, y));
+        mouse(timeline_, QEvent::MouseMove, QPointF(x1 - 160, y));
+        logLine(QString("while trim: total=%1 tlw=%2 scrubbing=%3").arg(pr_.total(), 0, 'f', 2).arg(timeline_->width()).arg(scrubbing_));
+        timeline_->grab().save(dir + "/fs_14_trim_drag.png");
+    });
+    at(16400, [=] {
+        const double x1 = 14 + pr_.outStart(1) * (timeline_->width() - 28) / pr_.total();
+        mouse(timeline_, QEvent::MouseButtonRelease, QPointF(x1, 66));
+        timeline_->grab().save(dir + "/fs_15_trim_released.png");
+        logLine(QString("after trim: total=%1 piece0=%2..%3").arg(pr_.total(), 0, 'f', 2)
+                    .arg(pr_.pieces[0].start, 0, 'f', 2).arg(pr_.pieces[0].end, 0, 'f', 2));
+    });
+    at(16800, [=] {
+        // ersten Abschnitt hinter den zweiten ziehen
+        const double w = timeline_->width() - 28, tot = pr_.total();
+        const double xa = 14 + pr_.outStart(0) * w / tot + pr_.pieces[0].outDur() * w / tot / 2;
+        const double xb = 14 + pr_.outStart(1) * w / tot + pr_.pieces[1].outDur() * w / tot * 0.9;
+        logLine(QString("reorder before: first=%1 second=%2").arg(pr_.pieces[0].start, 0, 'f', 2).arg(pr_.pieces[1].start, 0, 'f', 2));
+        mouse(timeline_, QEvent::MouseButtonPress, QPointF(xa, 50));
+        mouse(timeline_, QEvent::MouseMove, QPointF(xa + 20, 50));
+        mouse(timeline_, QEvent::MouseMove, QPointF(xb, 50));
+        timeline_->grab().save(dir + "/fs_16_reorder_drag.png");
+        mouse(timeline_, QEvent::MouseButtonRelease, QPointF(xb, 50));
+        logLine(QString("reorder after: first=%1 second=%2").arg(pr_.pieces[0].start, 0, 'f', 2).arg(pr_.pieces[1].start, 0, 'f', 2));
+    });
+    // Zeichnen und Formen
+    at(17200, [=] {
+        seek(0.5);
+        setTool(1);
+        const double W = pr_.vw, H = pr_.vh;
+        emit view_->toolPressed(QPointF(W * 0.2, H * 0.3));
+        for (int k = 1; k <= 20; ++k) emit view_->toolMoved(QPointF(W * (0.2 + k * 0.01), H * (0.3 + std::sin(k / 3.0) * 0.08)));
+        emit view_->toolReleased(QPointF(W * 0.41, H * 0.3));
+        emit view_->toolPressed(QPointF(W * 0.25, H * 0.5));
+        emit view_->toolMoved(QPointF(W * 0.35, H * 0.55));
+        emit view_->toolReleased(QPointF(W * 0.35, H * 0.55));
+        setTool(0);
+        logLine(QString("draw: items=%1 kind=%2 strokes=%3").arg(pr_.items.size()).arg(pr_.items.last().kind).arg(pr_.items.last().strokes.size()));
+        for (int k : {Item::Rect, Item::Ellipse, Item::Arrow}) {
+            shapeKind_ = k;
+            setTool(2);
+            emit view_->toolPressed(QPointF(W * (0.55 + k * 0.1), H * 0.2));
+            emit view_->toolMoved(QPointF(W * (0.62 + k * 0.1), H * 0.45));
+            emit view_->toolReleased(QPointF(W * (0.62 + k * 0.1), H * 0.45));
+        }
+        logLine(QString("shapes: items=%1 tool=%2").arg(pr_.items.size()).arg(tool_));
+    });
+    at(17800, [=] {
+        step("17_draw_shapes");
+        // Export mit Zeichnung und Formen
+        ensureProbed();
+        ExportOptions eo;
+        eo.width = 640; eo.height = 360; eo.fps = 30; eo.format = "mp4";
+        Project ep = pr_;
+        for (Item& it : ep.items)
+            if (it.kind == Item::Text || it.graphic()) {
+                it.path = dir + QString("/item%1.png").arg(it.id);
+                renderItemImage(it, QSize(std::max(2, int(it.w * 640)), std::max(2, int(it.h * 360))), 360).save(it.path);
+            }
+        QProcess pr;
+        pr.start(ffmpegPath(), buildExport(ep, eo, dir + "/export_draw.mp4"));
+        pr.waitForFinished(180000);
+        logLine(QString("export draw exit=%1 %2").arg(pr.exitCode()).arg(QString::fromUtf8(pr.readAllStandardError().right(400))));
+        QProcess fr;  // ein Bild aus dem Export zum Ansehen
+        fr.start(ffmpegPath(), {"-v", "error", "-y", "-ss", "0.6", "-i", dir + "/export_draw.mp4", "-frames:v", "1", dir + "/export_draw.png"});
+        fr.waitForFinished(30000);
+    });
+    // Tondatei öffnen und als Video exportieren
+    at(19000, [=] {
+        if (audioFile.isEmpty()) return;
+        btnEdit_->setChecked(false);
+        openFile(audioFile);
+    });
+    at(21000, [=] {
+        if (!audioFile.isEmpty()) {
+            step("18_audio_file");
+            togglePlay();
+        }
+    });
+    at(22000, [=] {
+        if (!audioFile.isEmpty()) {
+            step("19_audio_playing");
+            ensureProbed();
+            logLine(QString("audio: video=%1 dur=%2 fps=%3").arg(pr_.sources[0].video).arg(pr_.sources[0].duration, 0, 'f', 2).arg(pr_.sources[0].fps));
+            ExportOptions eo;
+            eo.width = 640; eo.height = 360; eo.fps = 30; eo.format = "mp4";
+            QProcess pr;
+            pr.start(ffmpegPath(), buildExport(pr_, eo, dir + "/export_audio.mp4"));
+            pr.waitForFinished(180000);
+            logLine(QString("export audio exit=%1 %2").arg(pr.exitCode()).arg(QString::fromUtf8(pr.readAllStandardError().right(400))));
+        }
+        QApplication::quit();
+    });
 }
 
 void MainWindow::aspectShots(const QString& dir) {

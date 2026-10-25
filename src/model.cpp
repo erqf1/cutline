@@ -168,7 +168,10 @@ QStringList buildExport(const Project& pr, const ExportOptions& o, const QString
     const int cnt = pr.pieces.size();
     for (int i = 0; i < cnt; ++i) {
         const Piece& p = pr.pieces[i];
-        if (!audioOnly) {
+        if (!audioOnly && !pr.sources.value(p.src).video) {
+            // Tondatei als Abschnitt: schwarzes Bild in der Länge des Abschnitts
+            f << QString("color=c=black:s=%1x%2:r=%3:d=%4,setsar=1[v%5]").arg(W).arg(H).arg(n(o.fps, 3)).arg(n(p.outDur())).arg(i);
+        } else if (!audioOnly) {
             QString v = QString("[%1:v]trim=start=%2:end=%3,setpts=(PTS-STARTPTS)/%4,")
                             .arg(p.src).arg(n(p.start)).arg(n(p.end)).arg(n(p.speed, 5));
             if (!p.transformed()) {

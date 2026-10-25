@@ -43,11 +43,20 @@ private:
     void drawDbPill(QPainter& p, double x, double y, double volume) const;
 
     struct Drag {
-        enum Kind { None, Seek, Trim, ItemDrag, AudioDrag, PieceVol, AudioVol } kind = None;
+        // PiecePress: in einen Abschnitt geklickt - wird beim Ziehen zu Reorder (Abschnitt verschieben) bzw. Seek
+        enum Kind { None, Seek, Trim, ItemDrag, AudioDrag, PieceVol, AudioVol, PiecePress, Reorder } kind = None;
         int index = 0;      // Abschnitt-Index bzw. ID
         char side = 0;      // 'l', 'r', 'm'
         double x0 = 0, a = 0, b = 0, c = 0, y0 = 0;
     } drag_;
+    // Beim Kürzen bleibt die Zeitleiste stehen: der gezogene Rand folgt der Maus, die anderen Abschnitte bleiben,
+    // wo sie waren. Erst beim Loslassen rückt alles wieder zusammen.
+    bool frozen_ = false;
+    double frozenPps_ = 0, origOut_ = 0;
+    QList<double> fx0_, fx1_;
+    double trimEdgeX() const;
+    int reorderTarget() const;  // Einfügestelle beim Verschieben eines Abschnitts
+    double mouseX_ = 0;
     // Lautstärke-Linie unter der Maus (für die dB-Anzeige)
     enum class Hover { None, Piece, Audio } hover_ = Hover::None;
     int hoverIndex_ = -1;

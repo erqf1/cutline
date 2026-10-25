@@ -1,5 +1,6 @@
 #pragma once
 #include <QList>
+#include <QPolygonF>
 #include <QSize>
 #include <QString>
 #include <QStringList>
@@ -12,6 +13,7 @@ struct Source {
     double duration = 0;
     double fps = 0;
     bool hasAudio = false;
+    bool video = true;  // false: reine Tondatei (MP3, WAV …) - Bild bleibt schwarz
     bool probed = false;
 };
 
@@ -29,7 +31,8 @@ struct Piece {
 };
 
 struct Item {
-    enum Kind { Image, Blur, Text };
+    enum Kind { Image, Blur, Text, Draw, Shape };
+    enum ShapeKind { Rect, Ellipse, Arrow, Line };
     int id = 0;
     Kind kind = Blur;
     double t0 = 0, t1 = 0;              // Ausgabezeit
@@ -41,6 +44,13 @@ struct Item {
     QString text, font;
     unsigned color = 0xffffffffu, bgColor = 0xcc000000u;
     bool bg = false;
+    // Zeichnung / Form: Linien in Koordinaten des Rahmens (0..1), Strichstärke in Pixeln bei 1080p.
+    // Pfeil und Linie: strokes[0] = Start- und Endpunkt.
+    int shape = Rect;
+    double stroke = 8.0;
+    bool fill = false;
+    QList<QPolygonF> strokes;
+    bool graphic() const { return kind == Draw || kind == Shape; }
 };
 
 struct AudioClip {

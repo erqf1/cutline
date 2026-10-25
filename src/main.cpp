@@ -4,6 +4,7 @@
 #include <shobjidl.h>
 #endif
 #include <QApplication>
+#include <QElapsedTimer>
 #include <QFileOpenEvent>
 #include <QGuiApplication>
 #include <QSettings>
@@ -33,7 +34,10 @@ protected:
     }
 };
 
+extern QElapsedTimer g_startup;  // mainwindow.cpp, für CUTLINE_TRACE
+
 int main(int argc, char* argv[]) {
+    g_startup.start();
 #ifdef Q_OS_WIN
     // Eigene App-ID: eigener Taskleisten-Button, nicht mit anderen Programmen gruppiert
     SetCurrentProcessExplicitAppUserModelID(L"WSoftware.Cutline");
@@ -50,7 +54,7 @@ int main(int argc, char* argv[]) {
     }
 #endif
     App app(argc, argv);
-    registerSpecialFonts();
+    // Mitgelieferte Text-Schriften erst laden, wenn man einen Text einfügt (schnellerer Start)
     QCoreApplication::setOrganizationName("WSoftware");
     QCoreApplication::setApplicationName("VideoEditor");
     QGuiApplication::setApplicationDisplayName("Cutline");
@@ -60,7 +64,7 @@ int main(int argc, char* argv[]) {
     app.setWindowIcon(appIcon);
 
     QSettings st;
-    setCurrentTheme(st.value("theme", "mint").toString());
+    setCurrentTheme(st.value("theme", "dark").toString());
     app.setStyleSheet(buildStyleSheet(currentTheme()));
 
     QString lang = st.value("language").toString();
@@ -74,6 +78,7 @@ int main(int argc, char* argv[]) {
 
     MainWindow w;
     w.show();
+    QTimer::singleShot(0, &w, [] { extern void cutlineTrace(const char*); cutlineTrace("window shown"); });
     app.window = &w;
     if (!app.pending.isEmpty()) w.openFile(app.pending);
     // Argumente als Unicode lesen (Dateien aus "Oeffnen mit" koennen Sonderzeichen enthalten)

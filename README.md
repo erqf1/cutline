@@ -1,10 +1,12 @@
 # Cutline
 
-A simple, fast video editor. Open an mp4 or mov, cut it, change the speed of parts, blur faces or text, drop in images, videos and music, and export. Nothing else.
+A simple, fast video editor and player. Open a video (or a music file), cut it, change the speed of parts, blur faces or text, draw on it, add shapes, drop in images, videos and music, and export.
 
-- **Also a good video player.** Make it your default app for mp4/mov/mkv: instant start, fullscreen, click to pause, 5-second skip, ambient light around the video.
-- **Opens instantly.** No import step, no project setup. Drag a video in and it plays.
-- **Edit mode with a timeline.** Drag segment edges to trim, split only what is selected (or everything at the playhead), per-segment speed, zoom in/out.
+- **Also a good video and music player.** Make it your default app for mp4/mov/mkv and mp3/wav/flac: instant start, YouTube-style controls that hide by themselves, hold `Space` for 2× speed, click to pause, 5-second skip, ambient light around the video.
+- **Opens instantly.** No import step, no project setup. Drag a video in and it plays – waveforms and thumbnails for editing are only computed when you start editing.
+- **Edit mode with a timeline.** Drag segment edges to trim (the edge follows your mouse, the gap closes when you let go), drag segments to reorder them, split only what is selected (or everything at the playhead), per-segment speed, zoom in/out.
+- **Resizable layout** like in CapCut: drag the dividers to make the media panel, the video, the properties or the timeline bigger or smaller.
+- **Draw and shapes.** Paint on the video, add rectangles, circles, arrows and lines – with color, line width and fill.
 - **Volume like in the big editors.** Waveforms on every clip; drag the volume line up or down and see the level in dB.
 - **Resize, move and rotate** each segment, add **text** (bundled display fonts or any installed font, with or without background), image overlays and real blur areas.
 - **Frame format** for any platform: original, 16:9, 9:16 (TikTok, Reels, Shorts), 1:1, 4:5, 4:3 or 21:9 – the video is fitted in, zoom it with the size slider to fill the frame.
@@ -12,7 +14,7 @@ A simple, fast video editor. Open an mp4 or mov, cut it, change the speed of par
 - **Sensible export.** MP4, MOV, MKV, GIF or audio only (MP3, WAV, M4A). Pick resolution (4K … SD), frame rate and quality – only values up to the original are offered.
 - **Checks for updates** and installs them on request (or ignore a version).
 - **Fullscreen** with `F11`, click the video to pause, arrow keys jump 5 seconds.
-- **12 languages** and several themes (including a clean "Studio" look and a full Windows XP Luna look).
+- **12 languages** and several themes: YouTube-style Dark, Light, OLED and Studio, plus Windows XP Luna and Terminal.
 - Uses your GPU encoder when available (NVENC, Quick Sync, AMF, VideoToolbox), otherwise x264.
 
 ## Download
@@ -39,7 +41,7 @@ Run `publish.bat`: it asks for your GitHub username, opens the new-repository pa
 
 | Key | Action |
 | --- | --- |
-| `Space` / click video | Play / pause |
+| `Space` / click video | Play / pause (hold `Space`: 2× speed) |
 | `←` / `→` | Back / forward 5 s |
 | `F11`, `Esc` | Fullscreen on / off |
 | `E` | Edit mode |
@@ -47,6 +49,7 @@ Run `publish.bat`: it asks for your GitHub username, opens the new-repository pa
 | `Q` / `W` | Trim start / end to playhead |
 | `Del` | Remove selected segment or element |
 | `B` / `I` | Add blur area / image |
+| `D` / `R` | Draw / shape (`Esc` stops) |
 | `Ctrl+O`, `Ctrl+E` | Open, export |
 | `Ctrl+Z`, `Ctrl+Y` | Undo, redo |
 

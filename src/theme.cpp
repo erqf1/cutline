@@ -16,26 +16,34 @@ static QList<Theme> makeThemes() {
         t.font = font; t.fontPx = px; t.radius = r; t.xp = xp;
         return t;
     };
-    return {
-        mk("mint", "Mint", "#0d0f14", "#151821", "#1c202b", "#2a2f3d", "#e6e8ee", "#8b90a0", "#4ade9b", "#04231a",
-           "#0a0c11", "#000000"),
-        // Studio: schlicht, dunkelgrau mit Türkis – wie bekannte Schnittprogramme
-        mk("studio", "Studio", "#161616", "#202020", "#2a2a2a", "#333333", "#e8e8e8", "#8c8c8c", "#1fc8d4", "#062326",
-           "#1a1a1a", "#000000", "'Segoe UI','SF Pro Text','Helvetica Neue','Ubuntu','Noto Sans','DejaVu Sans',sans-serif",
-           12, 6),
-        mk("ocean", "Ocean", "#0a101d", "#101a2e", "#16233c", "#263557", "#e3ecff", "#8fa3c7", "#4aa3ff", "#04101f",
-           "#08101c", "#000000"),
-        mk("violet", "Violett", "#100c1b", "#181227", "#221a36", "#392c59", "#efe9ff", "#9d8fc0", "#a78bfa", "#140a2e",
-           "#0c0916", "#000000"),
-        mk("sunset", "Sunset", "#17100e", "#221815", "#2d211c", "#493429", "#fbeee6", "#b59a8a", "#ff8a4c", "#2a1204",
-           "#120c0a", "#000000"),
-        mk("light", "Hell / Light", "#eef0f5", "#ffffff", "#eceef4", "#d3d7e0", "#1b1f2a", "#6a7083", "#2a9d6f",
-           "#ffffff", "#e4e7ee", "#111111"),
+    // Die normalen Designs im Stil von YouTube: ruhige Grautöne, runde Knöpfe ohne Rahmen, Rot als Akzent
+    const char* ytFont = "'Roboto','Segoe UI','SF Pro Text','Helvetica Neue','Ubuntu','Noto Sans','DejaVu Sans',sans-serif";
+    auto yt = [&](const char* id, const char* name, const char* bg, const char* panel, const char* panel2,
+                  const char* border, const char* text, const char* muted, const char* accent, const char* acctext,
+                  const char* tl, const char* hover) {
+        Theme t = mk(id, name, bg, panel, panel2, border, text, muted, accent, acctext, tl, "#000000", ytFont, 13, 12);
+        t.hover = QColor(hover);
+        t.yt = true;
+        return t;
+    };
+    QList<Theme> list = {
+        yt("dark", "Dunkel / Dark", "#0f0f0f", "#181818", "#272727", "#303030", "#f1f1f1", "#aaaaaa", "#ff0033", "#ffffff",
+           "#121212", "#3f3f3f"),
+        yt("light", "Hell / Light", "#ffffff", "#f9f9f9", "#f2f2f2", "#e5e5e5", "#0f0f0f", "#606060", "#ff0033", "#ffffff",
+           "#f2f2f2", "#e5e5e5"),
+        yt("oled", "OLED", "#000000", "#0d0d0d", "#1f1f1f", "#262626", "#ffffff", "#9a9a9a", "#ff0033", "#ffffff",
+           "#080808", "#333333"),
+        // Studio: wie YouTube Studio – dunkelgrau mit Blau
+        yt("studio", "Studio", "#1f1f1f", "#282828", "#363636", "#3d3d3d", "#ffffff", "#aaaaaa", "#3ea6ff", "#0f0f0f",
+           "#1a1a1a", "#454545"),
         mk("xp", "Windows XP", "#ECE9D8", "#F7F6EE", "#FFFFFF", "#7F9DB9", "#000000", "#4d4d4d", "#316AC5", "#FFFFFF",
            "#FFFFFF", "#000000", "'Tahoma','Verdana','DejaVu Sans',sans-serif", 12, 3, true),
         mk("terminal", "Terminal", "#0C0C0C", "#121212", "#1A1A1A", "#3A3A3A", "#CCCCCC", "#767676", "#F2F2F2", "#0C0C0C",
            "#080808", "#000000", "'Cascadia Mono','Consolas','Menlo','DejaVu Sans Mono',monospace", 13, 0),
     };
+    for (Theme& t : list)
+        if (!t.hover.isValid()) t.hover = t.border;
+    return list;
 }
 
 const QList<Theme>& themes() {
@@ -43,7 +51,7 @@ const QList<Theme>& themes() {
     return t;
 }
 
-static QString g_id = "mint";
+static QString g_id = "dark";
 
 const Theme& currentTheme() {
     for (const Theme& t : themes())
@@ -113,7 +121,48 @@ QSlider::handle:horizontal { width: 14px; height: 14px; margin: -6px 0; backgrou
 QToolTip { background: @panel@; color: @text@; border: 1px solid @border@; padding: 4px; }
 QProgressBar { background: @panel2@; border: 1px solid @border@; border-radius: @r6@px; text-align: center; height: 16px; }
 QProgressBar::chunk { background: @accent@; border-radius: @r6@px; }
+QSplitter::handle { background: transparent; }
+QSplitter::handle:hover { background: @accent@; border-radius: 2px; }
 )";
+    if (t.yt) {
+        // YouTube: Chips statt Rahmen-Knöpfe, ausgewählt = helle (bzw. dunkle) Fläche wie der Chip "Alle"
+        s += R"(
+QPushButton { background: @panel2@; border: none; border-radius: 18px; padding: 8px 16px; font-weight: 500; }
+QPushButton:hover { background: @hover@; }
+QPushButton:pressed { background: @border@; }
+QPushButton:checked { background: @text@; color: @bg@; }
+QPushButton:checked:hover { background: @muted@; }
+QPushButton#primary { background: @accent@; color: @acctext@; font-weight: 600; }
+QPushButton#primary:hover { background: @accent2@; }
+QPushButton#play { border: none; border-radius: 20px; background: @accent@; }
+QPushButton#play:hover { background: @accent2@; }
+QPushButton#tool { padding: 7px 14px; }
+QPushButton::menu-indicator { width: 0; image: none; }
+QFrame#card { background: @panel@; border: none; border-radius: 12px; }
+QDoubleSpinBox, QSpinBox, QComboBox, QLineEdit, QPlainTextEdit { background: @bg@; border: 1px solid @border@;
+    border-radius: 8px; padding: 6px 10px; }
+QDoubleSpinBox:focus, QSpinBox:focus, QLineEdit:focus, QPlainTextEdit:focus { border-color: #3ea6ff; }
+QComboBox QAbstractItemView { background: @panel@; border: none; border-radius: 12px; padding: 6px;
+    selection-background-color: @hover@; selection-color: @text@; }
+QListWidget { background: transparent; border: none; padding: 0; }
+QListWidget::item { border-radius: 8px; }
+QListWidget::item:hover { background: @panel2@; }
+QListWidget::item:selected { background: @hover@; color: @text@; }
+QGraphicsView { border-radius: 12px; }
+QScrollArea { border: none; border-radius: 12px; background: @tl@; }
+QScrollBar::handle:horizontal, QScrollBar::handle:vertical { background: @hover@; }
+QSlider::groove:horizontal { height: 4px; background: @border@; border-radius: 2px; }
+QSlider::sub-page:horizontal { background: @accent@; border-radius: 2px; }
+QSlider::handle:horizontal { width: 13px; height: 13px; margin: -5px 0; background: @accent@; border-radius: 6px; }
+QToolTip { background: #616161; color: #ffffff; border: none; border-radius: 4px; padding: 6px 8px; }
+QMenu { background: @panel@; border: 1px solid @border@; border-radius: 12px; padding: 8px 0; }
+QMenu::item { padding: 8px 36px 8px 16px; color: @text@; }
+QMenu::item:selected { background: @hover@; }
+QCheckBox::indicator { width: 16px; height: 16px; border: 2px solid @muted@; border-radius: 3px; background: transparent; }
+QCheckBox::indicator:checked { background: #3ea6ff; border-color: #3ea6ff; }
+QProgressBar { border: none; background: @panel2@; border-radius: 3px; }
+)";
+    }
     if (t.xp) {
         // Windows XP "Luna": blaue Taskleiste, grüner Start-Knopf, blaues Aufgabenfenster, Luna-Scrollbalken
         s += R"(
@@ -224,6 +273,7 @@ QLabel#title { font-weight: bold; }
         .replace("@bg@", hex(t.bg)).replace("@panel@", hex(t.panel)).replace("@panel2@", hex(t.panel2))
         .replace("@border@", hex(t.border)).replace("@text@", hex(t.text)).replace("@muted@", hex(t.muted))
         .replace("@accent2@", hex(t.accent.lighter(115))).replace("@accent@", hex(t.accent))
-        .replace("@acctext@", hex(t.accentText)).replace("@tl@", hex(t.timeline)).replace("@video@", hex(t.video));
+        .replace("@acctext@", hex(t.accentText)).replace("@tl@", hex(t.timeline)).replace("@video@", hex(t.video))
+        .replace("@hover@", hex(t.hover));
     return s;
 }

@@ -29,17 +29,40 @@ double Timeline::basePps() const {
     return std::max(0.001, vw / std::max(host_->pr().total(), 0.5));
 }
 
-double Timeline::pps() const { return basePps() * zoom_; }
+double Timeline::pps() const { return frozen_ ? frozenPps_ : basePps() * zoom_; }
 
 void Timeline::relayout() {
     Project& pr = host_->pr();
-    // höchstens ~250 Pixel pro Sekunde, auch bei stundenlangen Aufnahmen
-    zoom_ = std::clamp(zoom_, 1.0, std::max(1.0, 250.0 / basePps()));
     int lanes = std::max<int>(2, pr.items.size() + pr.audios.size());
     setMinimumHeight(RULER + ROW + LANE * lanes + 16);
+    if (frozen_) {  // beim Kürzen: Maßstab bleibt, nur breiter werden, nie schmaler (sonst springt alles)
+        const double w = std::max(pr.total() * pps(), fx1_.isEmpty() ? 0.0 : fx1_.last() - LEFT) + 2 * LEFT + 40;
+        if (w > width()) setFixedWidth(int(std::min(16000000.0, w)));
+        update();
+        return;
+    }
+    // höchstens ~250 Pixel pro Sekunde, auch bei stundenlangen Aufnahmen
+    zoom_ = std::clamp(zoom_, 1.0, std::max(1.0, 250.0 / basePps()));
     const double w = pr.total() * pps() + 2 * LEFT;
     setFixedWidth(int(std::min(16000000.0, std::max(w, double(host_->timelineViewportWidth())))));
     update();
+}
+
+// x des Randes, der gerade gekürzt wird (dort steht beim Kürzen die Abspielmarke)
+double Timeline::trimEdgeX() const {
+    const QRectF r = pieceRect(drag_.index);
+    return drag_.side == 'l' ? r.left() - 1 : r.right() + 1;
+}
+
+int Timeline::reorderTarget() const {
+    Project& pr = host_->pr();
+    int target = 0;
+    for (int i = 0; i < pr.pieces.size(); ++i) {
+        if (i == drag_.index) continue;
+        const QRectF r = pieceRect(i);
+        if (r.center().x() < mouseX_) ++target;
+    }
+    return target;
 }
 
 void Timeline::zoomBy(double factor) {
@@ -55,7 +78,22 @@ static QColor mix(const QColor& a, const QColor& b, double t) {
 
 QRectF Timeline::pieceRect(int i) const {
     Project& pr = host_->pr();
-    const double x0 = xOf(pr.outStart(i)), x1 = xOf(pr.outStart(i) + pr.pieces[i].outDur());
+    double x0 = xOf(pr.outStart(i)), x1 = xOf(pr.outStart(i) + pr.pieces[i].outDur());
+    if (frozen_ && i < fx0_.size()) {
+        const double len = pr.pieces[i].outDur() * pps();
+        const double grow = pr.pieces.value(drag_.index).outDur() - origOut_;  // > 0: Abschnitt wird länger
+        if (i == drag_.index) {
+            // der gezogene Rand wandert, der andere bleibt stehen
+            if (drag_.side == 'l') { x1 = fx1_[i]; x0 = x1 - len; }
+            else { x0 = fx0_[i]; x1 = x0 + len; }
+        } else if (i > drag_.index && drag_.side == 'r' && grow > 0) {
+            x0 = fx0_[i] + grow * pps();  // länger nach rechts: die folgenden Abschnitte weichen aus
+            x1 = fx1_[i] + grow * pps();
+        } else {
+            x0 = fx0_[i];
+            x1 = fx1_[i];
+        }
+    }
     return QRectF(x0 + 1, RULER + 2, std::max(2.0, x1 - x0 - 2), ROW - 6);
 }
 
@@ -150,12 +188,11 @@ void Timeline::paintEvent(QPaintEvent* ev) {
     const QColor pieceBase = mix(th.panel2, th.accent, 0.35);
     const QColor waveBg = mix(th.timeline, th.accent, 0.22);
     const QColor waveFg = mix(th.accent, QColor(Qt::white), 0.25);
-    for (int i = 0; i < pr.pieces.size(); ++i) {
+    auto drawPiece = [&](int i, const QRectF& r) {
         const Piece& pc = pr.pieces[i];
-        const QRectF r = pieceRect(i);
-        if (r.right() < vis.left() - 4 || r.left() > vis.right() + 4) continue;
+        if (r.right() < vis.left() - 4 || r.left() > vis.right() + 4) return;
         const QRectF rt(r.left(), r.top(), r.width(), r.height() - WAVE);
-        const QRectF rw = waveRect(i);
+        const QRectF rw(r.left(), r.bottom() - WAVE, r.width(), WAVE);
         const bool sel = i == host_->selPiece();
         QPainterPath clip;
         clip.addRoundedRect(r, 7, 7);
@@ -207,6 +244,35 @@ void Timeline::paintEvent(QPaintEvent* ev) {
             p.setPen(Qt::white);
             p.drawText(pill, Qt::AlignCenter, label);
         }
+    };
+    const bool reorder = drag_.kind == Drag::Reorder && drag_.index < pr.pieces.size();
+    for (int i = 0; i < pr.pieces.size(); ++i) {
+        if (reorder && i == drag_.index) {  // Platzhalter, wo der Abschnitt herkommt
+            p.setPen(QPen(th.border, 1.5, Qt::DashLine));
+            p.setBrush(Qt::NoBrush);
+            p.drawRoundedRect(pieceRect(i), 7, 7);
+            continue;
+        }
+        drawPiece(i, pieceRect(i));
+    }
+    if (reorder) {
+        // Einfügestelle + der Abschnitt hängt an der Maus
+        const int target = reorderTarget();
+        double mx = LEFT;
+        int seen = 0;
+        for (int i = 0; i < pr.pieces.size(); ++i) {
+            if (i == drag_.index) continue;
+            if (seen++ < target) mx = pieceRect(i).right() + 1;
+        }
+        if (target == 0) {
+            for (int i = 0; i < pr.pieces.size(); ++i)
+                if (i != drag_.index) { mx = pieceRect(i).left() - 1; break; }
+        }
+        p.setPen(QPen(th.accent, 3));
+        p.drawLine(QPointF(mx, RULER), QPointF(mx, RULER + ROW));
+        p.setOpacity(0.85);
+        drawPiece(drag_.index, pieceRect(drag_.index).translated(mouseX_ - drag_.x0, -6));
+        p.setOpacity(1.0);
     }
 
     // Spuren: erst Elemente (Bild/Text/Unschärfe), dann Ton
@@ -215,15 +281,19 @@ void Timeline::paintEvent(QPaintEvent* ev) {
         QRectF r(xOf(it.t0), laneY(lane) + 2, std::max(6.0, (it.t1 - it.t0) * sc), LANE - 4);
         ++lane;
         bool sel = host_->selItem() == it.id;
-        QColor base = it.kind == Item::Blur ? blurColor() : it.kind == Item::Text ? textItemColor() : imageColor();
+        QColor base = it.kind == Item::Blur ? blurColor() : it.kind == Item::Text ? textItemColor()
+                      : it.kind == Item::Draw ? drawItemColor() : it.kind == Item::Shape ? shapeItemColor() : imageColor();
         p.setBrush(sel ? base.lighter(125) : base);
         p.setPen(sel ? QPen(th.accent, 2) : QPen(Qt::NoPen));
         p.drawRoundedRect(r, 6, 6);
         p.setPen(Qt::white);
         p.setFont(small);
+        static const char* shapeKeys[] = {"shape_rect", "shape_ellipse", "shape_arrow", "shape_line"};
         const QString name = it.kind == Item::Blur ? T("blur")
                              : it.kind == Item::Text ? it.text.section('\n', 0, 0)
-                                                     : QFileInfo(it.path).fileName();
+                             : it.kind == Item::Draw ? T("drawing")
+                             : it.kind == Item::Shape ? T(shapeKeys[std::clamp(it.shape, 0, 3)])
+                                                      : QFileInfo(it.path).fileName();
         p.drawText(r.adjusted(8, 0, -4, 0), Qt::AlignVCenter, name);
     }
     for (int k = 0; k < pr.audios.size(); ++k) {
@@ -264,8 +334,8 @@ void Timeline::paintEvent(QPaintEvent* ev) {
         p.drawLine(QPointF(dropX_, RULER), QPointF(dropX_, height()));
     }
 
-    // Playhead
-    int x = int(xOf(host_->curTime()));
+    // Playhead (beim Kürzen am gezogenen Rand - dort zeigt die Vorschau das Bild)
+    int x = int(frozen_ && drag_.kind == Drag::Trim ? trimEdgeX() : xOf(host_->curTime()));
     p.setPen(QPen(playheadColor(), 2));
     p.drawLine(x, 0, x, height());
     p.setPen(Qt::NoPen);
@@ -333,21 +403,36 @@ void Timeline::mousePressEvent(QMouseEvent* e) {
     const QPointF pos = e->position();
     Project& pr = host_->pr();
     if (pr.pieces.isEmpty()) return;
-    hoverX_ = pos.x();
+    hoverX_ = mouseX_ = pos.x();
 
-    if (pos.y() < RULER) {
+    // Lineal oder die Abspielmarke selbst: spulen (Ränder von Abschnitten und Elementen gehen aber vor -
+    // nach dem Teilen liegt die Marke genau auf dem neuen Rand)
+    const bool onPlayhead = std::abs(pos.x() - xOf(host_->curTime())) <= 4;
+    auto seekDrag = [&] {
         drag_.kind = Drag::Seek;
         host_->seek(tOf(pos.x()));
-        return;
-    }
+    };
+    if (pos.y() < RULER) return seekDrag();
     if (pos.y() < RULER + ROW) {
         char side = 0;
         const int edge = pieceEdgeAt(pos, &side);
+        if (edge < 0 && onPlayhead) return seekDrag();
         if (edge >= 0) {
             const Piece& pc = pr.pieces[edge];
             host_->pushUndo();
             host_->selectPiece(edge);
+            // Zeitleiste einfrieren: Maßstab und Lage der Abschnitte wie beim Anfassen
+            frozenPps_ = pps();
+            fx0_.clear();
+            fx1_.clear();
+            for (int k = 0; k < pr.pieces.size(); ++k) {
+                fx0_ << xOf(pr.outStart(k));
+                fx1_ << xOf(pr.outStart(k) + pr.pieces[k].outDur());
+            }
+            origOut_ = pc.outDur();
+            frozen_ = true;
             drag_ = {Drag::Trim, edge, side, pos.x(), pc.start, pc.end, 0, pos.y()};
+            host_->beginScrub();
             return;
         }
         const int vol = pieceVolAt(pos);
@@ -359,8 +444,9 @@ void Timeline::mousePressEvent(QMouseEvent* e) {
             return;
         }
         double t = tOf(pos.x());
-        host_->selectPiece(pr.locate(t, nullptr));
-        drag_.kind = Drag::Seek;
+        const int idx = pr.locate(t, nullptr);
+        host_->selectPiece(idx);
+        drag_ = {Drag::PiecePress, idx, 0, pos.x(), 0, 0, 0, pos.y()};
         host_->seek(t);
         return;
     }
@@ -379,6 +465,8 @@ void Timeline::mousePressEvent(QMouseEvent* e) {
             drag_ = {Drag::AudioVol, a->id, 0, pos.x(), toDb(a->volume), 0, 0, pos.y()};
         else
             drag_ = {Drag::AudioDrag, a->id, mode, pos.x(), a->t0, a->dur, a->srcStart, pos.y()};
+    } else if (onPlayhead) {
+        seekDrag();
     } else {
         host_->selectItem(0);
         host_->selectAudio(0);
@@ -389,10 +477,10 @@ void Timeline::mousePressEvent(QMouseEvent* e) {
 void Timeline::mouseMoveEvent(QMouseEvent* e) {
     const QPointF pos = e->position();
     Project& pr = host_->pr();
-    hoverX_ = pos.x();
+    hoverX_ = mouseX_ = pos.x();
     if (drag_.kind == Drag::None) {
         char side = 0;
-        bool near = pieceEdgeAt(pos, &side) >= 0;
+        bool near = pieceEdgeAt(pos, &side) >= 0 || std::abs(pos.x() - xOf(host_->curTime())) <= 4;
         if (Item* it = itemAt(pos)) near |= std::abs(pos.x() - xOf(it->t0)) <= 6 || std::abs(pos.x() - xOf(it->t1)) <= 6;
         if (AudioClip* a = audioAt(pos)) near |= std::abs(pos.x() - xOf(a->t0)) <= 6 || std::abs(pos.x() - xOf(a->t0 + a->dur)) <= 6;
         Hover h = Hover::None;
@@ -409,7 +497,18 @@ void Timeline::mouseMoveEvent(QMouseEvent* e) {
         }
         return;
     }
-    if (drag_.kind == Drag::Seek) {
+    if (drag_.kind == Drag::PiecePress && std::abs(pos.x() - drag_.x0) > 6) {
+        // Abschnitt anfassen und ziehen = verschieben (bei nur einem Abschnitt: spulen)
+        if (pr.pieces.size() > 1) {
+            drag_.kind = Drag::Reorder;
+            setCursor(Qt::ClosedHandCursor);
+        } else {
+            drag_.kind = Drag::Seek;
+        }
+    }
+    if (drag_.kind == Drag::Reorder) {
+        update();
+    } else if (drag_.kind == Drag::Seek) {
         host_->scrub(tOf(pos.x()));
     } else if (drag_.kind == Drag::Trim) {
         if (drag_.index >= pr.pieces.size()) return;
@@ -418,6 +517,9 @@ void Timeline::mouseMoveEvent(QMouseEvent* e) {
         if (drag_.side == 'l') pc.start = std::clamp(drag_.a + dt, 0.0, pc.end - kMinPiece);
         else pc.end = std::clamp(drag_.b + dt, pc.start + kMinPiece, pr.srcDuration(drag_.index));
         host_->modelEdited(true);
+        // Vorschau zeigt das Bild am gezogenen Rand
+        const double t0 = pr.outStart(drag_.index);
+        host_->scrub(drag_.side == 'l' ? t0 + 0.001 : std::max(t0, t0 + pc.outDur() - 0.04));
     } else if (drag_.kind == Drag::PieceVol || drag_.kind == Drag::AudioVol) {
         // nach oben lauter, nach unten leiser (feiner mit gedrückter Umschalttaste)
         const double perPx = (e->modifiers() & Qt::ShiftModifier) ? 0.08 : 0.35;
@@ -461,9 +563,30 @@ void Timeline::mouseMoveEvent(QMouseEvent* e) {
 }
 
 void Timeline::mouseReleaseEvent(QMouseEvent*) {
-    bool settle = drag_.kind == Drag::Trim || drag_.kind == Drag::Seek;
+    Project& pr = host_->pr();
+    const Drag d = drag_;
     drag_.kind = Drag::None;
-    if (settle) host_->seek(host_->curTime());
+    if (d.kind == Drag::Reorder && d.index < pr.pieces.size()) {
+        const int target = reorderTarget();
+        unsetCursor();
+        if (target != d.index) {
+            host_->pushUndo();
+            pr.pieces.move(d.index, target);
+            host_->selectPiece(target);
+            host_->modelEdited(true);
+            host_->seek(pr.outStart(target) + 0.001);
+        }
+        relayout();
+        return;
+    }
+    if (d.kind == Drag::Trim) {
+        frozen_ = false;  // Lücke schließen: das Hauptvideo rückt wieder zusammen
+        relayout();
+    }
+    if (d.kind == Drag::Trim || d.kind == Drag::Seek) {
+        host_->seek(host_->curTime());
+        host_->endScrub();
+    }
     update();
 }
 

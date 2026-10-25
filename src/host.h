@@ -32,6 +32,9 @@ public:
     virtual void modelEdited(bool keepTime = false) = 0;
     virtual void seek(double t) = 0;
     virtual void scrub(double t) = 0;  // beim Ziehen: Anzeige sofort, Player gedrosselt
+    // Spulen per Ziehen: solange gezogen wird, pausiert und stumm (sonst kommen Tonfetzen), danach weiter wie vorher
+    virtual void beginScrub() = 0;
+    virtual void endScrub() = 0;
     virtual double viewScale() const = 0;
     virtual int timelineViewportWidth() const = 0;
     virtual const ThumbSet* thumbs(int srcIndex) const = 0;

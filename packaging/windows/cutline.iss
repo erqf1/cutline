@@ -1,4 +1,4 @@
-; Cutline installer (Inno Setup 6). Build: iscc /DMyAppVersion=1.0.0 packaging\windows\cutline.iss
+; Cutline installer (Inno Setup 6). Build: iscc /DMyAppVersion=1.8.0 packaging\windows\cutline.iss
 ; Expects the portable build in dist\Cutline (see build.bat / release workflow).
 #ifndef MyAppVersion
   #define MyAppVersion "1.0.0"
@@ -79,3 +79,30 @@ Root: HKA; Subkey: "Software\Cutline\Capabilities\FileAssociations"; ValueType: 
 Root: HKA; Subkey: "Software\Classes\Applications\Cutline.exe\SupportedTypes"; ValueType: string; ValueName: ".flv"; ValueData: ""; Tasks: openwith
 Root: HKA; Subkey: "Software\Classes\.flv\OpenWithList\Cutline.exe"; ValueType: none; Flags: uninsdeletekey; Tasks: openwith
 Root: HKA; Subkey: "Software\Cutline\Capabilities\FileAssociations"; ValueType: string; ValueName: ".flv"; ValueData: "Cutline.Video"; Tasks: openwith
+Root: HKA; Subkey: "Software\Classes\Cutline.Audio"; ValueType: string; ValueData: "Audio"; Flags: uninsdeletekey; Tasks: openwith
+Root: HKA; Subkey: "Software\Classes\Cutline.Audio\DefaultIcon"; ValueType: string; ValueData: "{app}\Cutline.exe,0"; Tasks: openwith
+Root: HKA; Subkey: "Software\Classes\Cutline.Audio\shell\open\command"; ValueType: string; ValueData: """{app}\Cutline.exe"" ""%1"""; Tasks: openwith
+Root: HKA; Subkey: "Software\Classes\Applications\Cutline.exe\SupportedTypes"; ValueType: string; ValueName: ".mp3"; ValueData: ""; Tasks: openwith
+Root: HKA; Subkey: "Software\Classes\.mp3\OpenWithList\Cutline.exe"; ValueType: none; Flags: uninsdeletekey; Tasks: openwith
+Root: HKA; Subkey: "Software\Cutline\Capabilities\FileAssociations"; ValueType: string; ValueName: ".mp3"; ValueData: "Cutline.Audio"; Tasks: openwith
+Root: HKA; Subkey: "Software\Classes\Applications\Cutline.exe\SupportedTypes"; ValueType: string; ValueName: ".wav"; ValueData: ""; Tasks: openwith
+Root: HKA; Subkey: "Software\Classes\.wav\OpenWithList\Cutline.exe"; ValueType: none; Flags: uninsdeletekey; Tasks: openwith
+Root: HKA; Subkey: "Software\Cutline\Capabilities\FileAssociations"; ValueType: string; ValueName: ".wav"; ValueData: "Cutline.Audio"; Tasks: openwith
+Root: HKA; Subkey: "Software\Classes\Applications\Cutline.exe\SupportedTypes"; ValueType: string; ValueName: ".m4a"; ValueData: ""; Tasks: openwith
+Root: HKA; Subkey: "Software\Classes\.m4a\OpenWithList\Cutline.exe"; ValueType: none; Flags: uninsdeletekey; Tasks: openwith
+Root: HKA; Subkey: "Software\Cutline\Capabilities\FileAssociations"; ValueType: string; ValueName: ".m4a"; ValueData: "Cutline.Audio"; Tasks: openwith
+Root: HKA; Subkey: "Software\Classes\Applications\Cutline.exe\SupportedTypes"; ValueType: string; ValueName: ".aac"; ValueData: ""; Tasks: openwith
+Root: HKA; Subkey: "Software\Classes\.aac\OpenWithList\Cutline.exe"; ValueType: none; Flags: uninsdeletekey; Tasks: openwith
+Root: HKA; Subkey: "Software\Cutline\Capabilities\FileAssociations"; ValueType: string; ValueName: ".aac"; ValueData: "Cutline.Audio"; Tasks: openwith
+Root: HKA; Subkey: "Software\Classes\Applications\Cutline.exe\SupportedTypes"; ValueType: string; ValueName: ".flac"; ValueData: ""; Tasks: openwith
+Root: HKA; Subkey: "Software\Classes\.flac\OpenWithList\Cutline.exe"; ValueType: none; Flags: uninsdeletekey; Tasks: openwith
+Root: HKA; Subkey: "Software\Cutline\Capabilities\FileAssociations"; ValueType: string; ValueName: ".flac"; ValueData: "Cutline.Audio"; Tasks: openwith
+Root: HKA; Subkey: "Software\Classes\Applications\Cutline.exe\SupportedTypes"; ValueType: string; ValueName: ".ogg"; ValueData: ""; Tasks: openwith
+Root: HKA; Subkey: "Software\Classes\.ogg\OpenWithList\Cutline.exe"; ValueType: none; Flags: uninsdeletekey; Tasks: openwith
+Root: HKA; Subkey: "Software\Cutline\Capabilities\FileAssociations"; ValueType: string; ValueName: ".ogg"; ValueData: "Cutline.Audio"; Tasks: openwith
+Root: HKA; Subkey: "Software\Classes\Applications\Cutline.exe\SupportedTypes"; ValueType: string; ValueName: ".opus"; ValueData: ""; Tasks: openwith
+Root: HKA; Subkey: "Software\Classes\.opus\OpenWithList\Cutline.exe"; ValueType: none; Flags: uninsdeletekey; Tasks: openwith
+Root: HKA; Subkey: "Software\Cutline\Capabilities\FileAssociations"; ValueType: string; ValueName: ".opus"; ValueData: "Cutline.Audio"; Tasks: openwith
+Root: HKA; Subkey: "Software\Classes\Applications\Cutline.exe\SupportedTypes"; ValueType: string; ValueName: ".wma"; ValueData: ""; Tasks: openwith
+Root: HKA; Subkey: "Software\Classes\.wma\OpenWithList\Cutline.exe"; ValueType: none; Flags: uninsdeletekey; Tasks: openwith
+Root: HKA; Subkey: "Software\Cutline\Capabilities\FileAssociations"; ValueType: string; ValueName: ".wma"; ValueData: "Cutline.Audio"; Tasks: openwith
