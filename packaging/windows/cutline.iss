@@ -1,4 +1,4 @@
-; Cutline installer (Inno Setup 6). Build: iscc /DMyAppVersion=1.10.0 packaging\windows\cutline.iss
+; Cutline installer (Inno Setup 6). Build: iscc /DMyAppVersion=1.10.1 packaging\windows\cutline.iss
 ; Expects the portable build in dist\Cutline (see build.bat / release workflow).
 #ifndef MyAppVersion
   #define MyAppVersion "1.0.0"

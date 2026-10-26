@@ -79,6 +79,92 @@ def page(size, label, color, detail, dark=False):
     return img.resize((size, size), Image.LANCZOS)
 
 
+# ---------------------------------------------------------------- kleine Größen (16-40 px)
+# Logo und Endung sind dort zu klein. Stattdessen: Blatt, darauf unten ein breites farbiges Schild mit der Endung in
+# weißen Großbuchstaben (16/20 px als Pixelschrift, ab 24 px Segoe UI), ab 20 px oben klein das Logo.
+SMALL_LIGHT = {'paper': (255, 255, 255), 'outline': (150, 156, 168), 'fold': (226, 230, 237), 'lines': (205, 209, 216)}
+SMALL_DARK = {'paper': (43, 45, 50), 'outline': (110, 114, 124), 'fold': (62, 65, 72), 'lines': (78, 81, 90)}
+GLYPHS = {  # 3x5 Pixel je Zeichen
+    'A': '.#.|#.#|###|#.#|#.#', 'B': '##.|#.#|##.|#.#|##.', 'C': '.##|#..|#..|#..|.##', 'D': '##.|#.#|#.#|#.#|##.',
+    'E': '###|#..|##.|#..|###', 'F': '###|#..|##.|#..|#..', 'G': '.##|#..|#.#|#.#|.##', 'H': '#.#|#.#|###|#.#|#.#',
+    'I': '###|.#.|.#.|.#.|###', 'J': '..#|..#|..#|#.#|.#.', 'K': '#.#|#.#|##.|#.#|#.#', 'L': '#..|#..|#..|#..|###',
+    'M': '#.#|###|###|#.#|#.#', 'N': '##.|#.#|#.#|#.#|#.#', 'O': '.#.|#.#|#.#|#.#|.#.', 'P': '##.|#.#|##.|#..|#..',
+    'Q': '.#.|#.#|#.#|##.|.##', 'R': '##.|#.#|##.|#.#|#.#', 'S': '.##|#..|.#.|..#|##.', 'T': '###|.#.|.#.|.#.|.#.',
+    'U': '#.#|#.#|#.#|#.#|###', 'V': '#.#|#.#|#.#|#.#|.#.', 'W': '#.#|#.#|###|###|#.#', 'X': '#.#|#.#|.#.|#.#|#.#',
+    'Y': '#.#|#.#|.#.|.#.|.#.', 'Z': '###|..#|.#.|#..|###',
+    '0': '###|#.#|#.#|#.#|###', '1': '.#.|##.|.#.|.#.|###', '2': '##.|..#|.#.|#..|###', '3': '##.|..#|.#.|..#|##.',
+    '4': '#.#|#.#|###|..#|..#', '5': '###|#..|##.|..#|##.', '6': '.##|#..|###|#.#|###', '7': '###|..#|.#.|.#.|.#.',
+    '8': '###|#.#|###|#.#|###', '9': '###|#.#|###|..#|##.',
+    '+': '...|.#.|###|.#.|...', '#': '#.#|###|#.#|###|#.#', '<': '..#|.#.|#..|.#.|..#', '>': '#..|.#.|..#|.#.|#..',
+    '/': '..#|..#|.#.|#..|#..',
+}
+
+
+def small(size, label, color, dark=False):
+    P = SMALL_DARK if dark else SMALL_LIGHT
+    col = hexrgb(color)
+    s, K = size, 4
+    left = int(s * 0.125 + 0.5)
+    right, fold = s - left, int(s * 0.3 + 0.5)
+    # Blatt mit 1 px Rand und Eselsohr, auf ganze Pixel ausgerichtet (4-fach gezeichnet, dann verkleinert)
+    img = Image.new('RGBA', (s * K, s * K), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    poly = lambda pts, fill: d.polygon([(x * K, y * K) for x, y in pts], fill=fill + (255,))
+    poly([(left, 0), (right - fold, 0), (right, fold), (right, s), (left, s)], P['outline'])
+    poly([(left + 1, 1), (right - fold - 0.4, 1), (right - 1, fold + 0.4), (right - 1, s - 1), (left + 1, s - 1)], P['paper'])
+    poly([(right - fold, 0), (right - fold, fold), (right, fold)], P['outline'])
+    poly([(right - fold + 1, 1.25), (right - fold + 1, fold - 1), (right - 1.25, fold - 1)], P['fold'])
+    img = img.resize((s, s), Image.LANCZOS)
+    d = ImageDraw.Draw(img)
+    text, font = label.upper(), None
+    if s >= 24:  # größte Segoe-Größe, die aufs Schild passt - sonst Pixelschrift
+        for fs in range(round(s * 0.42), 6, -1):
+            f = ImageFont.truetype(FONT, fs)
+            x0, _, x1, _ = d.textbbox((0, 0), text, font=f)
+            if x1 - x0 <= s - 2:
+                font = f
+                break
+    if font is None:
+        if len(text) * 4 - 1 > s:  # 16 px: höchstens 4 Zeichen
+            text = text[:3]
+        tw, th = len(text) * 4 - 1, 5
+    else:
+        hb = d.textbbox((0, 0), 'H', font=font)
+        tw, th = x1 - x0, hb[3] - hb[1]  # Breite, Versalhöhe
+    pad = 1 if s < 20 else 2 if s < 32 else 3
+    bh = th + 2 * pad
+    by = s - 1 - bh
+    bw = min(s, max(tw + 2 * pad, right - left + 2))
+    bx = (s - bw) // 2
+    d.rectangle([bx, by, bx + bw - 1, by + bh - 1], fill=col + (255,))
+    for cx, cy in ((bx, by), (bx + bw - 1, by), (bx, by + bh - 1), (bx + bw - 1, by + bh - 1)):
+        img.putpixel((cx, cy), col + (110,))  # Ecken leicht abgerundet
+    tx = bx + (bw - tw) // 2
+    if font is None:
+        for ch in text:
+            for r, row in enumerate(GLYPHS.get(ch, '...|...|...|...|...').split('|')):
+                for c, v in enumerate(row):
+                    if v == '#':
+                        img.putpixel((tx + c, by + pad + r), (255, 255, 255, 255))
+            tx += 4
+    else:
+        d.text((tx - x0, by + pad - hb[1]), text, font=font, fill=(255, 255, 255, 255))
+    if s >= 20:  # Logo oben links auf dem Blatt
+        ls = min(by - 3, right - left - fold)
+        img.alpha_composite(LOGO.resize((ls, ls), Image.LANCZOS), (left + 2, 2))
+    else:  # 16 px: zwei Zeilen statt Logo
+        for y in range(3, by - 1, 2):
+            d.line([(left + 2, y), (right - (fold + 1 if y < fold + 1 else 3), y)], fill=P['lines'] + (255,))
+    return img
+
+
+SIZES = (16, 20, 24, 32, 40, 48, 64, 128, 256)
+
+
+def icon(size, label, color, dark=False):
+    return small(size, label, color, dark) if size < 48 else page(size, label, color, True, dark)
+
+
 def png(img):
     b = io.BytesIO()
     img.save(b, 'PNG', optimize=True)
@@ -102,7 +188,7 @@ for variant in ('light', 'dark'):
     os.makedirs(os.path.join(OUT, variant), exist_ok=True)
     for name, (label, color) in icons.items():
         write_ico(os.path.join(OUT, variant, f'{name}.ico'),
-                  [(s, png(page(s, label, color, s >= 48, variant == 'dark'))) for s in (16, 24, 32, 48, 64, 128, 256)])
+                  [(s, png(icon(s, label, color, variant == 'dark'))) for s in SIZES])
 print(f'{len(icons)} Dateisymbole (hell + dunkel) nach {OUT}')
 
 # ---------------------------------------------------------------- Installer: Registry-Einträge
