@@ -34,8 +34,8 @@ signals:
 private:
     void retranslate();
     void markAccent();  // gewählte Farbe umranden
-    QLabel *lblLang_, *lblTheme_, *lblAccent_;
-    QComboBox *lang_, *theme_;
+    QLabel *lblLang_, *lblTheme_, *lblAccent_, *lblIcons_ = nullptr;
+    QComboBox *lang_, *theme_, *icons_ = nullptr;
     QPushButton *ok_, *update_, *keys_, *accentDefault_, *accentCustom_;
     QList<QPushButton*> swatches_;
 };

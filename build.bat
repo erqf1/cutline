@@ -19,6 +19,7 @@ mkdir dist\Cutline
 "%QTDIR%\bin\windeployqt.exe" --no-translations --no-system-d3d-compiler --no-opengl-sw --dir dist\Cutline build\Cutline.exe >nul
 copy /y build\Cutline.exe dist\Cutline\ >nul
 copy /y build\ffmpeg.exe dist\Cutline\ >nul
+xcopy /e /i /y /q assets\filetypes dist\Cutline\filetypes >nul
 copy /y LICENSE dist\Cutline\ >nul 2>nul
 copy /y README.md dist\Cutline\ >nul 2>nul
 powershell -NoProfile -Command "Compress-Archive -Path dist\Cutline -DestinationPath dist\Cutline-windows-x64.zip -Force"

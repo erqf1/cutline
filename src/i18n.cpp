@@ -130,6 +130,10 @@ const Entry kTable[] = {
  {"accent", {"Akzentfarbe","Accent color","Color de acento","Couleur d'accent","Colore di accento","Cor de destaque","Accentkleur","Kolor akcentu","Vurgu rengi","Цвет акцента","アクセントカラー","强调色"}},
  {"custom_color", {"Eigene…","Custom…","Personalizado…","Personnalisée…","Personalizzato…","Personalizada…","Eigen…","Własny…","Özel…","Свой…","カスタム…","自定义…"}},
  {"theme_color", {"Wie Design","Theme default","Del tema","Celle du thème","Del tema","Do tema","Van het thema","Z motywu","Temadaki","Как в теме","テーマの色","主题默认"}},
+ {"file_icons", {"Dateisymbole","File icons","Iconos de archivo","Icônes de fichiers","Icone dei file","Ícones de arquivo","Bestandspictogrammen","Ikony plików","Dosya simgeleri","Значки файлов","ファイル アイコン","文件图标"}},
+ {"fi_auto", {"Wie Windows","Like Windows","Como Windows","Comme Windows","Come Windows","Como o Windows","Zoals Windows","Jak Windows","Windows gibi","Как в Windows","Windows に合わせる","跟随 Windows"}},
+ {"fi_light", {"Hell","Light","Claro","Clair","Chiaro","Claro","Licht","Jasne","Açık","Светлые","ライト","浅色"}},
+ {"fi_dark", {"Dunkel","Dark","Oscuro","Sombre","Scuro","Escuro","Donker","Ciemne","Koyu","Тёмные","ダーク","深色"}},
 };
 
 int g_lang = 0;

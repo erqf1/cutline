@@ -13,6 +13,8 @@ find_package(Qt6 REQUIRED COMPONENTS Widgets Multimedia MultimediaWidgets Networ
 
 set(CUTLINE_SOURCES
     src/main.cpp
+    src/fileicons.h
+    src/fileicons.cpp
     src/model.h
     src/model.cpp
     src/host.h

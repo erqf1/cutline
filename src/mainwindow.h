@@ -191,6 +191,7 @@ private:
     QWidget* buildMediaPage();
     void importMedia();
     void addToBin(const QString& path);
+    void showAudioInfo(const QString& path);  // Tondatei: Titel, Interpret, Cover (per ffmpeg, einmal pro Datei)
     void insertFromBin(const QString& path);
     void addImageFile(const QString& path);
     void addText();
@@ -288,6 +289,9 @@ private:
     QListWidget* bin_;
     QLabel* lblBinHint_;
     std::unique_ptr<QTemporaryDir> binDir_;
+    struct AudioMeta { QString title, sub; QImage cover; bool done = false; };
+    std::map<QString, AudioMeta> audioMeta_;
+    QString audioShown_;  // Datei, deren Infos gerade angezeigt werden
     QString lastSel_;
     // Bild anpassen
     QLabel *lblSize_, *lblPos_, *lblRot_;

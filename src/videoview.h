@@ -10,8 +10,9 @@ public:
     explicit VideoView(QGraphicsScene* scene, QWidget* parent = nullptr);
     void setAmbient(const QImage& tiny);
     void setToolActive(bool on);
-    // Reine Tondatei: Name und Symbol statt Bild
-    void setAudioTitle(const QString& title);
+    // Reine Tondatei (wie ein Musik-Player): Cover groß und verschwommen im Hintergrund, klein unten links,
+    // daneben Titel und "Interpret • Album". Ohne Cover: gezeichnete Noten. Leerer Titel = normales Video.
+    void setAudioInfo(const QString& title, const QString& subtitle = QString(), const QImage& cover = QImage());
 
 signals:
     void emptyClicked();
@@ -30,7 +31,8 @@ protected:
 
 private:
     QImage ambient_;
-    QString audioTitle_;
+    QString audioTitle_, audioSub_;
+    QImage cover_, coverBlur_;
     bool pressOnEmpty_ = false, tool_ = false, toolDown_ = false;
     QPoint pressPos_;
 };

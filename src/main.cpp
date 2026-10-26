@@ -15,6 +15,7 @@
 #include <QSlider>
 #include <QTimer>
 #include "dialogs.h"
+#include "fileicons.h"
 #include "i18n.h"
 #include "icons.h"
 #include "mainwindow.h"
@@ -112,6 +113,7 @@ int main(int argc, char* argv[]) {
 
     MainWindow w;
     w.show();
+    QTimer::singleShot(3000, &w, [] { syncFileIcons(); });  // Dateisymbole hell/dunkel (Windows, installiert)
     QTimer::singleShot(0, &w, [] { extern void cutlineTrace(const char*); cutlineTrace("window shown"); });
     app.window = &w;
     if (!app.pending.isEmpty()) w.openFile(app.pending);

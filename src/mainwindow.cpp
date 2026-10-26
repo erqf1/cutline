@@ -1289,12 +1289,17 @@ void MainWindow::openFile(const QString& path) {
     fsHint_->hide();
     lblHint_->hide();
     setWindowTitle(QFileInfo(path).fileName());
-    // Tondatei: schwarze 16:9-Fläche mit Noten-Symbol und Namen
+    // Tondatei: wie ein Musik-Player (Cover verschwommen im Hintergrund, klein unten links, Titel daneben)
     view_->setAmbient(QImage());  // kein Licht vom vorherigen Video
-    view_->setAudioTitle(s.video ? QString() : QFileInfo(path).completeBaseName());
+    if (s.video) {
+        audioShown_.clear();
+        view_->setAudioInfo(QString());
+    } else {
+        showAudioInfo(path);
+    }
     if (!s.video) {
         canvasSet_ = true;
-        canvasBg_->setBrush(Qt::black);
+        canvasBg_->setBrush(Qt::NoBrush);  // die 16:9-Fläche bleibt durchsichtig, dahinter liegt das Cover
         pr_.natW = 1920;
         pr_.natH = 1080;
         applyCanvas();
@@ -1492,7 +1497,12 @@ void MainWindow::activate(int i, double srcPos, bool play) {
         pendingPlay_ = play;
         pendingPos_ = srcPos;
         pendingRate_ = p.speed * boost_;
-        view_->setAudioTitle(pr_.sources[p.src].video ? QString() : QFileInfo(pr_.sources[p.src].path).completeBaseName());
+        if (pr_.sources[p.src].video) {
+            audioShown_.clear();
+            view_->setAudioInfo(QString());
+        } else {
+            showAudioInfo(pr_.sources[p.src].path);
+        }
         player_->setSource(QUrl::fromLocalFile(pr_.sources[p.src].path));
         player_->pause();
         ++posSets_;
@@ -2402,6 +2412,48 @@ void MainWindow::importMedia() {
         for (int i = 0; i < rest.size(); ++i)
             if (mediaKindOf(rest[i]) == MediaKind::Video) { openFile(rest.takeAt(i)); break; }
     for (const QString& f : rest) addToBin(f);
+}
+
+// Titel/Interpret/Album und eingebettetes Cover einer Tondatei: ffmpeg zeigt die Tags beim Einlesen an und schreibt
+// das Cover (falls vorhanden) als Bild. Bis es fertig ist, steht der Dateiname da.
+void MainWindow::showAudioInfo(const QString& path) {
+    audioShown_ = path;
+    AudioMeta& m = audioMeta_[path];
+    if (m.title.isEmpty()) m.title = QFileInfo(path).completeBaseName();
+    view_->setAudioInfo(m.title, m.sub, m.cover);
+    if (m.done) return;
+    m.done = true;
+    if (!binDir_) binDir_ = std::make_unique<QTemporaryDir>();
+    const QString jpg = binDir_->filePath(QString("cover%1.jpg").arg(audioMeta_.size()));
+    auto* proc = new QProcess(this);
+    connect(proc, &QProcess::finished, this, [this, proc, path, jpg] {
+        proc->deleteLater();
+        AudioMeta& m = audioMeta_[path];
+        QString title, artist, albumArtist, album;
+        for (const QString& line : QString::fromUtf8(proc->readAllStandardError()).split('\n')) {
+            if (line.contains("Duration:")) break;  // danach kommen nur noch die Spuren
+            const int colon = line.indexOf(':');
+            if (colon < 0) continue;
+            const QString key = line.left(colon).trimmed().toLower(), val = line.mid(colon + 1).trimmed();
+            if (val.isEmpty()) continue;
+            if (key == "title" && title.isEmpty()) title = val;
+            else if (key == "artist" && artist.isEmpty()) artist = val;
+            else if (key == "album_artist" && albumArtist.isEmpty()) albumArtist = val;
+            else if (key == "album" && album.isEmpty()) album = val;
+        }
+        if (artist.isEmpty()) artist = albumArtist;
+        if (!title.isEmpty()) m.title = title;
+        QStringList sub;
+        if (!artist.isEmpty()) sub << artist;
+        if (!album.isEmpty() && album != title) sub << album;
+        m.sub = sub.join(QString::fromUtf8(" \u2022 "));
+        const QImage cover(jpg);
+        if (!cover.isNull()) m.cover = cover;
+        if (audioShown_ == path) view_->setAudioInfo(m.title, m.sub, m.cover);
+    });
+    // "0:v:0?": nur wenn ein Bild eingebettet ist; ohne Bild bricht ffmpeg ab, die Tags stehen trotzdem in der Ausgabe
+    proc->start(ffmpegPath(), {"-hide_banner", "-y", "-i", path, "-map", "0:v:0?", "-frames:v", "1", "-an",
+                               "-vf", "scale='min(800,iw)':-2", jpg});
 }
 
 void MainWindow::addToBin(const QString& path) {

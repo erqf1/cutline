@@ -1,4 +1,5 @@
 #include "dialogs.h"
+#include "fileicons.h"
 #include <QProcess>
 #include <QColorDialog>
 #include <cmath>
@@ -108,6 +109,15 @@ SettingsDialog::SettingsDialog(QWidget* parent) : QDialog(parent) {
         markAccent();
     });
     form->addRow(lblAccent_, accentBox);
+    // Dateisymbole im Explorer (nur installierte Windows-Version): wie Windows, hell oder dunkel
+    if (fileIconsAvailable()) {
+        lblIcons_ = new QLabel;
+        icons_ = new QComboBox;
+        for (const char* m : {"auto", "light", "dark"}) icons_->addItem(QString(), m);
+        icons_->setCurrentIndex(std::max(0, icons_->findData(fileIconsMode())));
+        connect(icons_, &QComboBox::currentIndexChanged, this, [this] { setFileIconsMode(icons_->currentData().toString()); });
+        form->addRow(lblIcons_, icons_);
+    }
     v->addLayout(form);
     markAccent();
     update_ = new QPushButton;
@@ -165,6 +175,12 @@ void SettingsDialog::retranslate() {
     lblAccent_->setText(T("accent"));
     accentCustom_->setText(T("custom_color"));
     accentDefault_->setText(T("theme_color"));
+    if (icons_) {
+        lblIcons_->setText(T("file_icons"));
+        icons_->setItemText(0, T("fi_auto"));
+        icons_->setItemText(1, T("fi_light"));
+        icons_->setItemText(2, T("fi_dark"));
+    }
     ok_->setText(T("ok"));
     update_->setText(T("upd_check"));
     keys_->setText(T("shortcuts") + "…");

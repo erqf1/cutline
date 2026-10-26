@@ -35,44 +35,153 @@ void VideoView::setToolActive(bool on) {
     else viewport()->unsetCursor();
 }
 
-void VideoView::setAudioTitle(const QString& title) {
+// Weichzeichnen: klein rechnen, dreimal Kastenfilter in beide Richtungen (beim Hochskalieren bleibt es weich)
+static QImage blurred(const QImage& src) {
+    const int n = 72;
+    QImage s = src.scaled(n, n, Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation);
+    s = s.copy((s.width() - n) / 2, (s.height() - n) / 2, n, n).convertToFormat(QImage::Format_RGB32);
+    const int r = 5;
+    for (int pass = 0; pass < 3; ++pass)
+        for (int dir = 0; dir < 2; ++dir) {
+            const QImage in = s;
+            for (int y = 0; y < n; ++y)
+                for (int x = 0; x < n; ++x) {
+                    int R = 0, G = 0, B = 0, c = 0;
+                    for (int d = -r; d <= r; ++d) {
+                        const int xx = dir == 0 ? std::clamp(x + d, 0, n - 1) : x, yy = dir == 1 ? std::clamp(y + d, 0, n - 1) : y;
+                        const QRgb v = in.pixel(xx, yy);
+                        R += qRed(v);
+                        G += qGreen(v);
+                        B += qBlue(v);
+                        ++c;
+                    }
+                    s.setPixel(x, y, qRgb(R / c, G / c, B / c));
+                }
+        }
+    return s;
+}
+
+void VideoView::setAudioInfo(const QString& title, const QString& subtitle, const QImage& cover) {
     audioTitle_ = title;
+    audioSub_ = subtitle;
+    cover_ = cover.isNull() ? QImage() : cover.scaled(600, 600, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+    coverBlur_ = cover.isNull() ? QImage() : blurred(cover);
     viewport()->update();
 }
 
-// Tondatei: großes Noten-Symbol und der Dateiname mitten im Bild
+// Hintergrund einer Tondatei: Cover groß und verschwommen, sonst ein ruhiger dunkler Verlauf mit etwas Akzentfarbe
+static void paintAudioBackground(QPainter* p, const QRect& vr, const QImage& blur) {
+    p->fillRect(vr, QColor("#111318"));
+    if (!blur.isNull()) {
+        p->setRenderHint(QPainter::SmoothPixmapTransform, true);
+        const double side = std::max(vr.width(), vr.height()) * 1.1;  // füllt alles, Ränder des Weichzeichners außerhalb
+        p->drawImage(QRectF(vr.center().x() - side / 2, vr.center().y() - side / 2, side, side), blur);
+        p->fillRect(vr, QColor(0, 0, 0, 115));
+    } else {
+        QColor a = currentTheme().accent;
+        for (const auto& [x, y, al] : {std::tuple{0.78, 0.18, 46}, {0.15, 0.85, 34}, {0.45, 0.55, 18}}) {
+            QRadialGradient g(QPointF(vr.left() + x * vr.width(), vr.top() + y * vr.height()), std::max(vr.width(), vr.height()) * 0.55);
+            a.setAlpha(al);
+            g.setColorAt(0, a);
+            a.setAlpha(0);
+            g.setColorAt(1, a);
+            p->fillRect(vr, g);
+        }
+    }
+    // unten dunkler, damit Titel und Cover-Karte gut lesbar sind
+    QLinearGradient shade(0, vr.top() + vr.height() * 0.45, 0, vr.bottom());
+    shade.setColorAt(0, QColor(0, 0, 0, 0));
+    shade.setColorAt(1, QColor(0, 0, 0, 120));
+    p->fillRect(vr, shade);
+}
+
+// Zwei verbundene Achtelnoten als Linienzeichnung (ohne Cover)
+static void paintNote(QPainter* p, const QRectF& card) {
+    const QPointF c = card.center();
+    const double k = card.width() / 112.0;
+    QPen pen(QColor(236, 238, 243), 4.6 * k, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin);
+    p->setPen(pen);
+    p->setBrush(Qt::NoBrush);
+    auto head = [&](QPointF at) {
+        p->save();
+        p->translate(at);
+        p->rotate(-22);
+        p->drawEllipse(QPointF(0, 0), 10.5 * k, 7.8 * k);
+        p->restore();
+    };
+    const QPointF h1(c.x() - 15 * k, c.y() + 19 * k), h2(c.x() + 19 * k, c.y() + 12 * k);
+    head(h1);
+    head(h2);
+    const double x1 = h1.x() + 9.6 * k, x2 = h2.x() + 9.6 * k;
+    p->drawLine(QPointF(x1, h1.y() - 3 * k), QPointF(x1, c.y() - 24 * k));
+    p->drawLine(QPointF(x2, h2.y() - 3 * k), QPointF(x2, c.y() - 31 * k));
+    QPainterPath beam;  // Balken oben, leicht schräg
+    beam.moveTo(x1, c.y() - 24 * k);
+    beam.lineTo(x2, c.y() - 31 * k);
+    p->setPen(QPen(QColor(236, 238, 243), 7 * k, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin));
+    p->drawPath(beam);
+}
+
+// Tondatei: Cover-Karte unten links, daneben Titel und Interpret/Album
 void VideoView::drawForeground(QPainter* p, const QRectF&) {
     if (audioTitle_.isEmpty()) return;
     p->save();
     p->resetTransform();
     p->setRenderHint(QPainter::Antialiasing);
+    p->setRenderHint(QPainter::SmoothPixmapTransform);
     const QRectF vr = viewport()->rect();
-    const double s = std::min(vr.width(), vr.height()) * 0.22;
-    const QPointF c(vr.center().x(), vr.center().y() - s * 0.25);
-    QLinearGradient g(c - QPointF(s, s), c + QPointF(s, s));
-    g.setColorAt(0, currentTheme().accent);
-    g.setColorAt(1, currentTheme().accent.darker(170));
-    p->setPen(Qt::NoPen);
-    p->setBrush(g);
-    p->drawRoundedRect(QRectF(c.x() - s, c.y() - s, 2 * s, 2 * s), s * 0.22, s * 0.22);
-    // Note
-    p->setBrush(Qt::white);
-    const double k = s / 50.0;
-    p->drawEllipse(QPointF(c.x() - 14 * k, c.y() + 18 * k), 10 * k, 8 * k);
-    p->drawEllipse(QPointF(c.x() + 18 * k, c.y() + 12 * k), 10 * k, 8 * k);
-    QPen pen(Qt::white, 5 * k, Qt::SolidLine, Qt::RoundCap, Qt::RoundJoin);
-    p->setPen(pen);
-    p->drawLine(QPointF(c.x() - 5 * k, c.y() + 16 * k), QPointF(c.x() - 5 * k, c.y() - 22 * k));
-    p->drawLine(QPointF(c.x() + 27 * k, c.y() + 10 * k), QPointF(c.x() + 27 * k, c.y() - 28 * k));
-    p->drawLine(QPointF(c.x() - 5 * k, c.y() - 22 * k), QPointF(c.x() + 27 * k, c.y() - 28 * k));
-    QFont f = font();
-    f.setPixelSize(std::max(13, int(s * 0.16)));
-    f.setBold(true);
-    p->setFont(f);
-    p->setPen(QColor(255, 255, 255, 230));
-    const QRectF tr(vr.left() + 20, c.y() + s + 14, vr.width() - 40, s * 0.4);
-    p->drawText(tr, Qt::AlignHCenter | Qt::AlignTop,
-                QFontMetrics(f).elidedText(audioTitle_, Qt::ElideMiddle, int(tr.width())));
+    const double m = std::clamp(std::min(vr.width(), vr.height()) * 0.045, 12.0, 32.0);
+    const double cs = std::clamp(std::min(vr.height() * 0.36, vr.width() * 0.3), 72.0, 300.0);
+    const QRectF card(vr.left() + m, vr.bottom() - m - cs, cs, cs);
+    const double rad = cs * 0.06;
+    // Schatten
+    for (int i = 6; i >= 1; --i) {
+        p->setPen(Qt::NoPen);
+        p->setBrush(QColor(0, 0, 0, 14));
+        p->drawRoundedRect(card.adjusted(-i * 1.5, -i * 0.5, i * 1.5, i * 2.5), rad + i, rad + i);
+    }
+    QPainterPath clip;
+    clip.addRoundedRect(card, rad, rad);
+    if (!cover_.isNull()) {
+        p->save();
+        p->setClipPath(clip);
+        const QImage c = cover_.scaled(card.size().toSize() * devicePixelRatioF(), Qt::KeepAspectRatioByExpanding, Qt::SmoothTransformation);
+        const QRectF src((c.width() - card.width() * devicePixelRatioF()) / 2, (c.height() - card.height() * devicePixelRatioF()) / 2,
+                         card.width() * devicePixelRatioF(), card.height() * devicePixelRatioF());
+        p->drawImage(card, c, src);
+        p->restore();
+        p->setPen(QPen(QColor(255, 255, 255, 30), 1));
+        p->setBrush(Qt::NoBrush);
+        p->drawPath(clip);
+    } else {
+        QLinearGradient g(card.topLeft(), card.bottomRight());
+        g.setColorAt(0, QColor(54, 58, 68, 235));
+        g.setColorAt(1, QColor(30, 32, 38, 235));
+        p->setPen(QPen(QColor(255, 255, 255, 38), 1));
+        p->setBrush(g);
+        p->drawPath(clip);
+        paintNote(p, card);
+    }
+    // Titel und Interpret
+    const double tx = card.right() + m * 0.9;
+    const double tw = vr.right() - m - tx;
+    if (tw > 60) {
+        QFont f = font();
+        f.setBold(true);
+        f.setPixelSize(int(std::clamp(cs * 0.15, 15.0, 36.0)));
+        QFont fs = font();
+        fs.setPixelSize(int(std::clamp(cs * 0.085, 12.0, 20.0)));
+        const QFontMetricsF mf(f), ms(fs);
+        double y = card.bottom() - (audioSub_.isEmpty() ? 0 : ms.height() + 4);
+        p->setFont(f);
+        p->setPen(QColor(255, 255, 255, 245));
+        p->drawText(QPointF(tx, y - mf.descent()), mf.elidedText(audioTitle_, Qt::ElideRight, tw));
+        if (!audioSub_.isEmpty()) {
+            p->setFont(fs);
+            p->setPen(QColor(255, 255, 255, 175));
+            p->drawText(QPointF(tx, card.bottom() - ms.descent()), ms.elidedText(audioSub_, Qt::ElideRight, tw));
+        }
+    }
     p->restore();
 }
 
@@ -129,6 +238,11 @@ void VideoView::drawBackground(QPainter* p, const QRectF&) {
     p->save();
     p->resetTransform();
     const QRect vr = viewport()->rect();
+    if (!audioTitle_.isEmpty()) {
+        paintAudioBackground(p, vr, coverBlur_);
+        p->restore();
+        return;
+    }
     p->fillRect(vr, currentTheme().video);
     if (currentTheme().xp && ambient_.isNull()) paintBliss(p, vr);
     if (!ambient_.isNull()) {

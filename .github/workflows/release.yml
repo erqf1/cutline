@@ -37,6 +37,7 @@ jobs:
           windeployqt --no-translations --no-system-d3d-compiler --no-opengl-sw --dir dist/Cutline build/Cutline.exe
           Copy-Item build/Cutline.exe dist/Cutline/
           Copy-Item $ff dist/Cutline/ffmpeg.exe
+          Copy-Item -Recurse assets/filetypes dist/Cutline/filetypes
           Copy-Item LICENSE, README.md dist/Cutline/
           Compress-Archive -Path dist/Cutline -DestinationPath Cutline-windows-x64.zip
       - name: Installer
