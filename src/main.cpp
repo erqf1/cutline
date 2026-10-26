@@ -3,11 +3,16 @@
 #include <windows.h>
 #include <shobjidl.h>
 #endif
+#include <QAbstractScrollArea>
+#include <QAbstractSpinBox>
 #include <QApplication>
+#include <QComboBox>
+#include <QDialog>
 #include <QElapsedTimer>
 #include <QFileOpenEvent>
 #include <QGuiApplication>
 #include <QSettings>
+#include <QSlider>
 #include <QTimer>
 #include "dialogs.h"
 #include "i18n.h"
@@ -34,6 +39,33 @@ protected:
     }
 };
 
+// Mausrad verstellt in Einstellungen und im Eigenschaften-Bereich nichts mehr: Beim Durchscrollen landete der
+// Zeiger sonst auf einer Auswahlliste, einem Regler oder Zahlenfeld und hat es nebenbei umgestellt. Jetzt scrollt
+// das Rad dort immer die Seite. Regler außerhalb solcher Seiten (z. B. die Zeitleiste im Player) bleiben wie sie sind.
+class NoWheelChange : public QObject {
+protected:
+    bool eventFilter(QObject* o, QEvent* e) override {
+        if (e->type() != QEvent::Wheel) return false;
+        auto* w = qobject_cast<QWidget*>(o);
+        if (!w) return false;
+        QWidget* ctl = nullptr;
+        for (QWidget* x = w; x && !x->isWindow(); x = x->parentWidget())
+            if (qobject_cast<QComboBox*>(x) || qobject_cast<QAbstractSpinBox*>(x) || qobject_cast<QSlider*>(x)) {
+                ctl = x;
+                break;
+            }
+        if (!ctl) return false;
+        for (QWidget* x = ctl->parentWidget(); x; x = x->parentWidget()) {
+            if (auto* area = qobject_cast<QAbstractScrollArea*>(x)) {
+                QCoreApplication::sendEvent(area->viewport(), e);
+                return true;
+            }
+            if (x->isWindow()) return qobject_cast<QDialog*>(x) != nullptr;  // im Dialog ohne Bildlauf: einfach nichts tun
+        }
+        return false;
+    }
+};
+
 extern QElapsedTimer g_startup;  // mainwindow.cpp, für CUTLINE_TRACE
 
 int main(int argc, char* argv[]) {
@@ -54,6 +86,7 @@ int main(int argc, char* argv[]) {
     }
 #endif
     App app(argc, argv);
+    app.installEventFilter(new NoWheelChange);
     // Mitgelieferte Text-Schriften erst laden, wenn man einen Text einfügt (schnellerer Start)
     QCoreApplication::setOrganizationName("WSoftware");
     QCoreApplication::setApplicationName("VideoEditor");
