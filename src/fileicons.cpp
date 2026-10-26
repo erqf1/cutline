@@ -41,17 +41,25 @@ static bool apply(const QString& variant) {
 #ifdef Q_OS_WIN
     const QFileInfoList icons = QDir(iconDir(variant)).entryInfoList({"*.ico"}, QDir::Files);
     if (icons.isEmpty()) return false;
+    const QString classes = "HKEY_CURRENT_USER\\Software\\Classes\\";
     for (const QFileInfo& f : icons) {
-        QSettings reg("HKEY_CURRENT_USER\\Software\\Classes\\Cutline." + f.completeBaseName() + "\\DefaultIcon", QSettings::NativeFormat);
-        reg.setValue("Default", QDir::toNativeSeparators(f.absoluteFilePath()));
+        const QString ext = f.completeBaseName(), path = QDir::toNativeSeparators(f.absoluteFilePath());
+        QSettings(classes + "Cutline." + ext + "\\DefaultIcon", QSettings::NativeFormat).setValue("Default", path);
+        // Symbol je Endung: greift, wenn der gewählte Eintrag selbst keins hat - z. B. die Sammel-ProgIDs
+        // Cutline.Video/Audio älterer Versionen (sonst stünde bei jedem Video "VIDEO" statt "MP4")
+        QSettings(classes + "SystemFileAssociations\\." + ext + "\\DefaultIcon", QSettings::NativeFormat).setValue("Default", path);
+        // Hat man Cutline.exe über "Andere App auswählen" gewählt, legt Windows "<endung>_auto_file" ohne Symbol an
+        // und der Explorer zeigt das Programmsymbol - diesem Eintrag das Dateisymbol geben
+        const QString autoFile = classes + ext + "_auto_file";
+        const QString cmd = QSettings(autoFile + "\\shell\\open\\command", QSettings::NativeFormat).value("Default").toString();
+        if (cmd.contains("Cutline.exe", Qt::CaseInsensitive))
+            QSettings(autoFile + "\\DefaultIcon", QSettings::NativeFormat).setValue("Default", path);
     }
-    // "Video" und "Audio": Sammel-ProgIDs älterer Versionen
-    for (const char* kind : {"Video", "Audio"}) {
-        QSettings reg(QString("HKEY_CURRENT_USER\\Software\\Classes\\Cutline.%1\\DefaultIcon").arg(kind), QSettings::NativeFormat);
-        reg.setValue("Default", QDir::toNativeSeparators(iconDir(variant) + "/" + QString(kind).toLower() + ".ico"));
-    }
+    for (const char* kind : {"Video", "Audio"})  // Sammel-ProgIDs älterer Versionen: kein eigenes Symbol (siehe oben)
+        QSettings(classes + "Cutline." + kind, QSettings::NativeFormat).remove("DefaultIcon");
     SHChangeNotify(SHCNE_ASSOCCHANGED, SHCNF_IDLIST, nullptr, nullptr);  // Explorer zeichnet die Symbole neu
     QSettings().setValue("fileIconsApplied", variant);
+    QSettings().setValue("fileIconsVersion", APP_VERSION);
     return true;
 #else
     Q_UNUSED(variant);
@@ -67,7 +75,9 @@ void setFileIconsMode(const QString& mode) {
 void syncFileIcons() {
     if (!fileIconsAvailable()) return;
     const QString want = resolved(fileIconsMode());
-    // Hell trägt der Installer selbst ein; dunkel nach jedem Update neu setzen (der Installer schreibt wieder hell)
-    if (want == "light" && QSettings().value("fileIconsApplied", "light").toString() == "light") return;
+    // Bei Wechsel hell/dunkel und einmal nach jedem Update (der Installer schreibt wieder hell und kennt die
+    // "_auto_file"-Einträge des Benutzers nicht)
+    const QSettings s;
+    if (s.value("fileIconsApplied").toString() == want && s.value("fileIconsVersion").toString() == APP_VERSION) return;
     apply(want);
 }

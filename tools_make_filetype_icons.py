@@ -14,7 +14,7 @@ OUT = os.path.join(ROOT, 'assets', 'filetypes')
 LOGO = Image.open(os.path.join(ROOT, 'assets', 'icon.png')).convert('RGBA')
 FONT = next((f for f in ['C:/Windows/Fonts/segoeuib.ttf', 'C:/Windows/Fonts/arialbd.ttf'] if os.path.exists(f)), None)
 
-# Endung -> (Beschriftung, Farbe, Art). "audio"/"video": Sammel-ProgIDs älterer Versionen
+# Endung -> (Beschriftung, Farbe, Art)
 TYPES = {
     'mp4': ('mp4', '#1d4ed8', 'video'), 'mov': ('mov', '#0f766e', 'video'), 'mkv': ('mkv', '#7e22ce', 'video'),
     'm4v': ('m4v', '#1e40af', 'video'), 'avi': ('avi', '#b91c1c', 'video'), 'webm': ('webm', '#15803d', 'video'),
@@ -23,7 +23,6 @@ TYPES = {
     'aac': ('aac', '#a21caf', 'audio'), 'flac': ('flac', '#059669', 'audio'), 'ogg': ('ogg', '#d97706', 'audio'),
     'opus': ('opus', '#4f46e5', 'audio'), 'wma': ('wma', '#2563eb', 'audio'),
 }
-GENERIC = {'video': ('video', '#0e7490'), 'audio': ('audio', '#7c3aed')}
 
 LIGHT = {'paper': (255, 255, 255), 'outline': (176, 182, 194), 'fold': (226, 230, 237), 'lines': (229, 232, 238), 'shadow': 60}
 DARK = {'paper': (43, 45, 50), 'outline': (88, 92, 102), 'fold': (62, 65, 72), 'lines': (60, 63, 70), 'shadow': 110}
@@ -183,9 +182,11 @@ def write_ico(path, images):
 
 
 icons = {ext: (label, color) for ext, (label, color, _) in TYPES.items()}
-icons.update(GENERIC)
 for variant in ('light', 'dark'):
     os.makedirs(os.path.join(OUT, variant), exist_ok=True)
+    for f in os.listdir(os.path.join(OUT, variant)):  # z. B. video.ico/audio.ico älterer Versionen nicht mehr mitliefern
+        if os.path.splitext(f)[0] not in icons:
+            os.remove(os.path.join(OUT, variant, f))
     for name, (label, color) in icons.items():
         write_ico(os.path.join(OUT, variant, f'{name}.ico'),
                   [(s, png(icon(s, label, color, variant == 'dark'))) for s in SIZES])
@@ -207,15 +208,26 @@ for ext, (label, color, kind) in TYPES.items():
         f'Root: HKA; Subkey: "Software\\Classes\\.{ext}\\OpenWithProgids"; ValueType: none; ValueName: "Cutline.{"Video" if kind == "video" else "Audio"}"; Flags: deletevalue',
         # Cutline kann das Symbol (hell/dunkel) für den Benutzer umgestellt haben: beim Deinstallieren mit entfernen
         f'Root: HKCU; Subkey: "Software\\Classes\\Cutline.{ext}"; Flags: uninsdeletekey dontcreatekey',
+        # Symbol je Endung: greift, wenn der gewählte Eintrag selbst keins hat (z. B. Cutline.Video älterer Versionen -
+        # sonst stünde bei jedem Video "VIDEO" statt "MP4"). Übergeordneten Schlüssel zuerst, damit er beim Deinstallieren
+        # (umgekehrte Reihenfolge) erst nach DefaultIcon geprüft und nur gelöscht wird, wenn er leer ist.
+        f'Root: HKA; Subkey: "Software\\Classes\\SystemFileAssociations\\.{ext}"; Flags: uninsdeletekeyifempty; Tasks: openwith',
+        f'Root: HKA; Subkey: "Software\\Classes\\SystemFileAssociations\\.{ext}\\DefaultIcon"; ValueType: string; ValueData: "{{app}}\\filetypes\\light\\{ext}.ico"; Flags: uninsdeletekey; Tasks: openwith',
+        f'Root: HKCU; Subkey: "Software\\Classes\\SystemFileAssociations\\.{ext}"; Flags: uninsdeletekeyifempty dontcreatekey',
+        f'Root: HKCU; Subkey: "Software\\Classes\\SystemFileAssociations\\.{ext}\\DefaultIcon"; Flags: uninsdeletekey dontcreatekey',
+        # Symbol, das Cutline dem von Windows angelegten "<endung>_auto_file" gegeben hat (src/fileicons.cpp)
+        f'Root: HKCU; Subkey: "Software\\Classes\\{ext}_auto_file\\DefaultIcon"; Flags: uninsdeletekey dontcreatekey',
     ]
 L += [
     'Root: HKA; Subkey: "Software\\Classes\\Applications\\Cutline.exe\\SupportedTypes"; ValueType: none; Flags: deletekey',
-    '; Sammel-ProgIDs älterer Versionen bleiben (falls Windows sie als Standard gespeichert hat), mit neuem Symbol',
+    '; Sammel-ProgIDs älterer Versionen bleiben (falls Windows sie als Standard gespeichert hat), ohne eigenes Symbol',
 ]
 for kind in ('Video', 'Audio'):
     L += [
         f'Root: HKA; Subkey: "Software\\Classes\\Cutline.{kind}"; ValueType: string; ValueData: "{kind}"; Flags: uninsdeletekey; Tasks: openwith',
-        f'Root: HKA; Subkey: "Software\\Classes\\Cutline.{kind}\\DefaultIcon"; ValueType: string; ValueData: "{{app}}\\filetypes\\light\\{kind.lower()}.ico"; Tasks: openwith',
+        # ohne eigenes Symbol, damit das Symbol der Endung (MP4, MP3 ...) greift
+        f'Root: HKA; Subkey: "Software\\Classes\\Cutline.{kind}\\DefaultIcon"; ValueType: none; Flags: deletekey; Tasks: openwith',
+        f'Root: HKCU; Subkey: "Software\\Classes\\Cutline.{kind}\\DefaultIcon"; ValueType: none; Flags: deletekey',
         f'Root: HKA; Subkey: "Software\\Classes\\Cutline.{kind}\\shell\\open\\command"; ValueType: string; ValueData: """{{app}}\\Cutline.exe"" ""%1"""; Tasks: openwith',
         f'Root: HKCU; Subkey: "Software\\Classes\\Cutline.{kind}"; Flags: uninsdeletekey dontcreatekey',
     ]
